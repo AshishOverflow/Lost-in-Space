@@ -98,6 +98,10 @@ export function useSimulation(initialConfig: SimulationConfig = DEFAULT_CONFIG) 
     setState(createInitialState(config, envProps));
   }, [config, currentMapId]);
 
+  const clearEvents = useCallback(() => {
+    setState(prev => ({ ...prev, events: [] }));
+  }, []);
+
   const newEnvironment = useCallback((seed?: number) => {
     switchMap(currentMapId, seed ?? Math.floor(Math.random() * 100000));
   }, [currentMapId, switchMap]);
@@ -229,6 +233,7 @@ export function useSimulation(initialConfig: SimulationConfig = DEFAULT_CONFIG) 
     resumeMission,
     stepMission,
     resetMission,
+    clearEvents,
     newEnvironment,
     setSeed,
     setSpeed,

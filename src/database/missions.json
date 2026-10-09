@@ -1,0 +1,118 @@
+[
+  {
+    "missionId": "AEGIS-MSN-001",
+    "runIndex": 1,
+    "completedAt": "2026-10-09T19:03:56.777Z",
+    "environment": "Mars",
+    "status": "MISSION_SUCCESSFUL",
+    "distanceTraversed": 140,
+    "areaExploredPercent": 64.4,
+    "cellsExplored": 580,
+    "totalCells": 900,
+    "resourcesCollectedCount": 3,
+    "resources": [
+      {
+        "type": "RARE_ELEMENT",
+        "value": 72
+      },
+      {
+        "type": "RARE_ELEMENT",
+        "value": 69
+      },
+      {
+        "type": "RARE_ELEMENT",
+        "value": 80
+      }
+    ],
+    "totalResourceValue": 221,
+    "biosignaturesScanned": [
+      "Olympus Ridge Formation"
+    ],
+    "solarEnergyHarvestedWh": 373,
+    "energyConsumedWh": 429.6,
+    "dataTransportedUnits": 145,
+    "dynamicHazardsAdapted": 5,
+    "elapsedTimeFormatted": "21:15",
+    "elapsedTimeSeconds": 76500
+  },
+  {
+    "missionId": "AEGIS-MSN-001",
+    "runIndex": 1,
+    "completedAt": "2026-10-09T19:05:50.850Z",
+    "environment": "Mars",
+    "status": "MISSION_SUCCESSFUL",
+    "distanceTraversed": 134,
+    "areaExploredPercent": 62.7,
+    "cellsExplored": 564,
+    "totalCells": 900,
+    "resourcesCollectedCount": 3,
+    "resources": [
+      {
+        "type": "RARE_ELEMENT",
+        "value": 72
+      },
+      {
+        "type": "RARE_ELEMENT",
+        "value": 80
+      },
+      {
+        "type": "GEOLOGICAL_SPECIMEN",
+        "value": 40
+      }
+    ],
+    "totalResourceValue": 192,
+    "biosignaturesScanned": [
+      "Olympus Ridge Formation"
+    ],
+    "solarEnergyHarvestedWh": 352,
+    "energyConsumedWh": 401.1,
+    "dataTransportedUnits": 145,
+    "dynamicHazardsAdapted": 5,
+    "elapsedTimeFormatted": "20:05",
+    "elapsedTimeSeconds": 72300
+  },
+  {
+    "missionId": "AEGIS-MSN-002",
+    "runIndex": 2,
+    "completedAt": "2026-10-09T19:07:30.496Z",
+    "environment": "Moon",
+    "status": "MISSION_SUCCESSFUL",
+    "distanceTraversed": 194,
+    "areaExploredPercent": 83.5,
+    "cellsExplored": 855,
+    "totalCells": 1024,
+    "resourcesCollectedCount": 5,
+    "resources": [
+      {
+        "type": "RARE_ELEMENT",
+        "value": 80
+      },
+      {
+        "type": "WATER_ICE",
+        "value": 44
+      },
+      {
+        "type": "WATER_ICE",
+        "value": 53
+      },
+      {
+        "type": "MINERAL_SAMPLE",
+        "value": 45
+      },
+      {
+        "type": "RARE_ELEMENT",
+        "value": 69
+      }
+    ],
+    "totalResourceValue": 291,
+    "biosignaturesScanned": [
+      "Shackleton Cold Trap"
+    ],
+    "solarEnergyHarvestedWh": 602.4,
+    "energyConsumedWh": 609.6,
+    "dataTransportedUnits": 200,
+    "dynamicHazardsAdapted": 7,
+    "elapsedTimeFormatted": "Sol 2, 02:15",
+    "elapsedTimeSeconds": 94500
+  }
+]

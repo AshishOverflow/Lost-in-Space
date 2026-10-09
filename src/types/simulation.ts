@@ -54,6 +54,14 @@ export interface GridCell {
   isRevealed: boolean;  // on belief map
 }
 
+export interface DynamicHazard {
+  id: string;
+  x: number;
+  y: number;
+  hazardType: string;
+  tick: number;
+}
+
 // --- Resources ---
 export enum ResourceType {
   MINERAL_SAMPLE = 'MINERAL_SAMPLE',
@@ -288,6 +296,8 @@ export interface SimulationState {
   lastPositions: Position[];
   isCharging: boolean;
   lastSolarRechargeTick?: number;
+  dynamicHazards?: DynamicHazard[];
+
   // Energy
   solar: SolarState;
   battery: BatteryState;
@@ -301,7 +311,8 @@ export interface SimulationState {
   missionComplete: boolean;
   missionFailed: boolean;
 
-  // AI
+  // AI & Network
+  secureNetwork?: any;
   decision: DecisionState;
   events: MissionEvent[];
   metrics: MissionMetrics;

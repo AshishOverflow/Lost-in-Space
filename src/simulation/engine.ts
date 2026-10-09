@@ -18,6 +18,9 @@ import {
 } from './pathfinding';
 import { updateSolarState, calculateSolarPower, calculateEnergyGenerated, predictSolarGeneration } from './solarModel';
 import { posKey, posEqual, manhattanDist } from '../utils/helpers';
+import { createInitialSecureChannel, updateSecureNetworkChannel } from './secureNetwork';
+import { RoverMissionDatabase } from '../database/roverDatabase';
+import { DynamicHazard } from '../types/simulation';
 
 // ============================================================
 // State creation
@@ -104,6 +107,9 @@ export function createInitialState(
     missionStarted: false,
     missionComplete: false,
     missionFailed: false,
+
+    secureNetwork: createInitialSecureChannel(),
+    dynamicHazards: [],
 
     decision: {
       currentGoal: 'Docked at Home Base — Awaiting launch',
@@ -221,13 +227,18 @@ export function simulationTick(state: SimulationState): SimulationState {
   const isAtSolar = isAtSolarChargingStation(s.roverPosition, s.solarStations);
 
   if (isAtBase) {
-    // Automatic scientific data downlink at Home Base
+    // Automatic scientific data downlink at Home Base via secure channel
     if (s.onboardData > 0) {
       const delivered = s.onboardData;
+      const netRes = updateSecureNetworkChannel(
+        s.secureNetwork || createInitialSecureChannel(),
+        s.roverPosition, s.homeBase, delivered
+      );
+      s.secureNetwork = netRes.channel;
       s.deliveredData += delivered;
       s.metrics.scientificDataDelivered += delivered;
       s.onboardData = 0;
-      addEvent(s, EventCategory.SCIENCE, `Home Base downlink: Delivered ${delivered.toFixed(0)} scientific data units to mission control`);
+      addEvent(s, EventCategory.SCIENCE, netRes.logMessage || `Home Base secure downlink: Delivered ${delivered.toFixed(0)} scientific data units to mission control`);
     }
 
     // Fast recharge from Home Base Hub
@@ -295,11 +306,31 @@ export function simulationTick(state: SimulationState): SimulationState {
     executeAutonomousAction(s);
   }
 
-  // 9. Update metrics and record history
+  // 9. Dynamic Environmental Obstacle Adaptation
+  triggerDynamicEnvironmentalHazards(s);
+
+  // 10. Update metrics and record history
   updateMetrics(s);
   recordHistory(s);
 
-  // 10. Check mission completion
+  // 11. Database logging: Update database each time rover operates
+  RoverMissionDatabase.getInstance().logOperation({
+    tick: s.tickCount,
+    timestamp: s.metrics.elapsedTime,
+    roverX: s.roverPosition.x,
+    roverY: s.roverPosition.y,
+    batteryEnergy: s.battery.currentEnergy,
+    batteryCapacity: s.battery.capacity,
+    solarPower: s.solar.currentPower,
+    harvestedTotal: s.battery.totalHarvested,
+    consumedTotal: s.battery.totalConsumed,
+    onboardData: s.onboardData,
+    deliveredData: s.deliveredData,
+    roverMode: s.roverMode,
+    currentGoal: s.decision.currentGoal,
+  });
+
+  // 12. Check mission completion
   checkMissionCompletion(s);
 
   return s;
@@ -991,6 +1022,7 @@ function checkMissionCompletion(s: SimulationState) {
     s.decision.currentGoal = 'Mission Complete';
     s.decision.currentAction = 'All objectives achieved';
     s.decision.riskLevel = 'LOW';
+    RoverMissionDatabase.getInstance().recordSuccessfulMission(s);
   }
 }
 
@@ -1085,6 +1117,7 @@ export function updateDecisionGoal(s: SimulationState) {
       s.roverMode = RoverMode.COMPLETED;
       s.decision.currentGoal = 'Mission Accomplished';
       addEvent(s, EventCategory.MISSION, 'Mission COMPLETE! All criteria achieved and rover safely recovered at Home Base.');
+      RoverMissionDatabase.getInstance().recordSuccessfulMission(s);
       return;
     }
     s.decision.currentGoal = 'All goals met — Returning to Home Base';
@@ -1305,4 +1338,117 @@ function findExplorationTarget(s: SimulationState): { target: Position; path: Po
   }
 
   return null;
+}
+
+// ============================================================
+// Dynamic Environmental Hazards & Route Adaptation
+// ============================================================
+
+export function triggerDynamicEnvironmentalHazards(s: SimulationState) {
+  if (!s.missionStarted || s.missionComplete || s.missionFailed) return;
+
+  // Trigger an environmental obstacle event every 28 ticks
+  if (s.tickCount > 15 && s.tickCount % 28 === 0) {
+    let targetCell: Position | null = null;
+
+    // Check if rover has a multi-step path ahead, pick a waypoint ahead
+    if (s.roverPath.length >= 3) {
+      const candidate = s.roverPath[2];
+      if (
+        !posEqual(candidate, s.homeBase) &&
+        !isAtSolarChargingStation(candidate, s.solarStations) &&
+        !posEqual(candidate, s.roverPosition)
+      ) {
+        targetCell = candidate;
+      }
+    }
+
+    // Otherwise pick a revealed passable cell within 5 cells radius of rover
+    if (!targetCell) {
+      const nearby: Position[] = [];
+      for (let dy = -4; dy <= 4; dy++) {
+        for (let dx = -4; dx <= 4; dx++) {
+          const nx = s.roverPosition.x + dx;
+          const ny = s.roverPosition.y + dy;
+          if (nx >= 0 && nx < s.mapWidth && ny >= 0 && ny < s.mapHeight) {
+            const cell = s.beliefMap[ny][nx];
+            const gCell = s.groundTruth[ny][nx];
+            if (
+              cell.isRevealed &&
+              gCell.terrain !== TerrainType.BOULDER &&
+              gCell.terrain !== TerrainType.CRATER &&
+              !posEqual({ x: nx, y: ny }, s.roverPosition) &&
+              !posEqual({ x: nx, y: ny }, s.homeBase) &&
+              !isAtSolarChargingStation({ x: nx, y: ny }, s.solarStations)
+            ) {
+              nearby.push({ x: nx, y: ny });
+            }
+          }
+        }
+      }
+      if (nearby.length > 0) {
+        targetCell = nearby[Math.floor(Math.random() * nearby.length)];
+      }
+    }
+
+    if (targetCell) {
+      const hazardTypes = ['Seismic Rockfall', 'Caldera Ridge Creep', 'Dune Slump Barrier', 'Cryo-Fault Debris'];
+      const hazardType = hazardTypes[Math.floor(Math.random() * hazardTypes.length)];
+
+      // Dynamically block the cell on ground truth and belief map
+      s.groundTruth[targetCell.y][targetCell.x] = {
+        ...s.groundTruth[targetCell.y][targetCell.x],
+        terrain: TerrainType.BOULDER,
+      };
+      s.beliefMap[targetCell.y][targetCell.x] = {
+        ...s.beliefMap[targetCell.y][targetCell.x],
+        terrain: TerrainType.BOULDER,
+        isRevealed: true,
+      };
+
+      const hazardRecord: DynamicHazard = {
+        id: `hazard-${s.tickCount}`,
+        x: targetCell.x,
+        y: targetCell.y,
+        hazardType,
+        tick: s.tickCount,
+      };
+      s.dynamicHazards = [...(s.dynamicHazards || []), hazardRecord];
+
+      // Check if current planned trajectory is blocked
+      const isRouteBlocked = s.roverPath.some(p => posEqual(p, targetCell!));
+
+      if (isRouteBlocked && s.roverTarget) {
+        // Adapt to obstacle: recompute alternative path around blockage!
+        const detour = findPath(
+          s.beliefMap, s.roverPosition, s.roverTarget,
+          s.energyCosts.baseMovement, 1.1,
+          s.terrainConfigs, s.visitedCount, 1.0
+        );
+
+        if (detour && detour.path.length > 0) {
+          s.roverPath = detour.path;
+          addEvent(s, EventCategory.SAFETY, `⚠️ Dynamic Obstacle: ${hazardType} blocked passage at (${targetCell.x}, ${targetCell.y}) — adaptive detour recomputed (${detour.path.length} steps)!`);
+          RoverMissionDatabase.getInstance().logHazard({
+            id: hazardRecord.id,
+            tick: s.tickCount,
+            timestamp: s.metrics.elapsedTime,
+            x: targetCell.x,
+            y: targetCell.y,
+            hazardType,
+            rerouteSuccess: true,
+            detourLength: detour.path.length,
+          });
+        } else {
+          // If destination is totally surrounded, blacklist and seek new frontier
+          s.roverPath = [];
+          s.roverTarget = null;
+          s.unreachableTargets.push(posKey(targetCell.x, targetCell.y));
+          addEvent(s, EventCategory.SAFETY, `⚠️ Path Blocked: ${hazardType} closed access to target at (${targetCell.x}, ${targetCell.y}) — recalculating mission goal.`);
+        }
+      } else {
+        addEvent(s, EventCategory.NAVIGATION, `⚠️ Environmental Hazard: ${hazardType} obstructed cell at (${targetCell.x}, ${targetCell.y}) — terrain updated.`);
+      }
+    }
+  }
 }

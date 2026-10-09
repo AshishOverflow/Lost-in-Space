@@ -5,13 +5,13 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-  --bg-wash: #0b0f19;
-  --bg-wash-deep: #070a12;
-  --bg-primary: #0f172a;
-  --bg-secondary: rgba(15, 23, 42, 0.94);
-  --bg-tertiary: rgba(21, 30, 46, 0.94);
-  --bg-elevated: rgba(30, 41, 59, 0.96);
-  --bg-hover: rgba(51, 65, 85, 0.96);
+  --bg-wash: #020408;
+  --bg-wash-deep: #000000;
+  --bg-primary: #030712;
+  --bg-secondary: rgba(11, 15, 25, 0.96);
+  --bg-tertiary: rgba(17, 24, 39, 0.96);
+  --bg-elevated: rgba(24, 32, 50, 0.98);
+  --bg-hover: rgba(36, 48, 72, 0.98);
 
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border-default: rgba(255, 255, 255, 0.14);
@@ -80,9 +80,9 @@ body {
   font-size: 13px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  background-color: #0b0f19;
+  background-color: #020408;
   background:
-    radial-gradient(ellipse at 25% 15%, #1e293b 0%, #111827 50%, #0b0f19 100%);
+    radial-gradient(ellipse at 25% 15%, #0b1120 0%, #030712 55%, #020408 100%);
 }
 
 /* ===================== LAYOUT ===================== */
@@ -466,7 +466,7 @@ body {
   overflow: hidden;
   cursor: grab;
   background:
-    radial-gradient(circle at 50% 45%, #0f172a 0%, #080d19 65%, #03060c 100%);
+    radial-gradient(circle at 50% 45%, #080d18 0%, #03060c 65%, #010205 100%);
   border: 4px solid rgba(255, 255, 255, 0.08);
   box-shadow:
     var(--shadow-float),
@@ -727,23 +727,26 @@ body {
   100% { transform: scale(1.8); opacity: 0; }
 }
 
-.rover-chassis {
-  width: 17px;
-  height: 17px;
+.rover-simple-dot {
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  background: #0284c7;
+  background: #38bdf8;
   border: 1.5px solid #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 0 12px rgba(56, 189, 248, 0.95), 0 0 3px #ffffff;
-  will-change: transform;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 1), 0 0 4px #ffffff;
+  z-index: 5;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.rover-nav-icon {
-  color: #ffffff;
-  transform: translateY(-0.5px);
-  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.6));
+.rover-dot-pulse {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.2px solid rgba(56, 189, 248, 0.7);
+  background: rgba(56, 189, 248, 0.15);
+  animation: roverRadarRing 2.2s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+  pointer-events: none;
 }
 
 .map-cell__resource {
@@ -1005,8 +1008,12 @@ body {
 /* ===================== EVENT LOG ===================== */
 
 .event-log {
-  max-height: 260px;
+  max-height: 180px;
+  min-height: 100px;
   overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  scroll-behavior: smooth;
 }
 
 .event-entry {
@@ -1439,4 +1446,91 @@ body {
 
 .progress-fill--amber {
   background: linear-gradient(90deg, #d97706, #fbbf24);
+}
+
+/* ===================== MISSION ACCOMPLISHED COMPLETE SUMMARY POPUP ===================== */
+
+.mission-complete-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  background: rgba(2, 4, 8, 0.88);
+  backdrop-filter: blur(14px);
+  padding: 16px;
+  animation: modalFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.mission-complete-card {
+  width: min(840px, 95vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #090e18;
+  border: 1.5px solid rgba(16, 185, 129, 0.45);
+  border-radius: 28px;
+  padding: 24px 28px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.95), 0 0 40px rgba(16, 185, 129, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: relative;
+}
+
+.mission-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 6px 0;
+}
+
+.mission-stat-box {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mission-stat-box__label {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.mission-stat-box__value {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.network-badge-cipher {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.network-signal-meter {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: #10b981;
 }
