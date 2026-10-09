@@ -25,15 +25,15 @@ export interface TerrainConfig {
 }
 
 export const TERRAIN_CONFIGS: Record<TerrainType, TerrainConfig> = {
-  [TerrainType.FLAT_ROCK]:  { type: TerrainType.FLAT_ROCK,  passable: true,  movementCost: 1.0, label: 'Flat Rock',   color: '#252d3d', symbol: '·' },
-  [TerrainType.GRAVEL]:     { type: TerrainType.GRAVEL,     passable: true,  movementCost: 1.3, label: 'Gravel Bed',  color: '#785338', symbol: '∴' },
-  [TerrainType.SAND]:       { type: TerrainType.SAND,       passable: true,  movementCost: 1.8, label: 'Sand Dunes',  color: '#d97706', symbol: '≈' },
-  [TerrainType.ROCKY]:      { type: TerrainType.ROCKY,      passable: true,  movementCost: 2.2, label: 'Rough Rock',  color: '#b91c1c', symbol: '▲' },
-  [TerrainType.STEEP]:      { type: TerrainType.STEEP,      passable: true,  movementCost: 3.0, label: 'Steep Slope', color: '#6b21a8', symbol: '⛰' },
-  [TerrainType.BOULDER]:    { type: TerrainType.BOULDER,    passable: false, movementCost: Infinity, label: 'Boulder Barrier', color: '#1e293b', symbol: '■' },
-  [TerrainType.CRATER]:     { type: TerrainType.CRATER,     passable: false, movementCost: Infinity, label: 'Impact Crater',   color: '#0b0f19', symbol: '◯' },
-  [TerrainType.UNKNOWN]:    { type: TerrainType.UNKNOWN,    passable: true,  movementCost: 2.0, label: 'Unknown Fog', color: '#07090e', symbol: '?' },
-  [TerrainType.HOME_BASE]:  { type: TerrainType.HOME_BASE,  passable: true,  movementCost: 1.0, label: 'Home Base',   color: '#0284c7', symbol: '⌂' },
+  [TerrainType.FLAT_ROCK]:  { type: TerrainType.FLAT_ROCK,  passable: true,  movementCost: 1.0, label: 'Flat Rock',   color: '#e6d5c3', symbol: '·' },
+  [TerrainType.GRAVEL]:     { type: TerrainType.GRAVEL,     passable: true,  movementCost: 1.3, label: 'Gravel Bed',  color: '#c9a98a', symbol: '∴' },
+  [TerrainType.SAND]:       { type: TerrainType.SAND,       passable: true,  movementCost: 1.8, label: 'Sand Dunes',  color: '#d4a574', symbol: '≈' },
+  [TerrainType.ROCKY]:      { type: TerrainType.ROCKY,      passable: true,  movementCost: 2.2, label: 'Rough Rock',  color: '#b07a62', symbol: '▲' },
+  [TerrainType.STEEP]:      { type: TerrainType.STEEP,      passable: true,  movementCost: 3.0, label: 'Steep Slope', color: '#9a6b58', symbol: '⛰' },
+  [TerrainType.BOULDER]:    { type: TerrainType.BOULDER,    passable: false, movementCost: Infinity, label: 'Boulder Barrier', color: '#6f5848', symbol: '■' },
+  [TerrainType.CRATER]:     { type: TerrainType.CRATER,     passable: false, movementCost: Infinity, label: 'Impact Crater',   color: '#8a7060', symbol: '◯' },
+  [TerrainType.UNKNOWN]:    { type: TerrainType.UNKNOWN,    passable: true,  movementCost: 2.0, label: 'Unknown Fog', color: '#d9cfc4', symbol: '?' },
+  [TerrainType.HOME_BASE]:  { type: TerrainType.HOME_BASE,  passable: true,  movementCost: 1.0, label: 'Home Base',   color: '#c4a484', symbol: '⌂' },
 };
 
 // --- Grid ---
@@ -330,17 +330,17 @@ export interface SimulationConfig {
 }
 
 export const DEFAULT_CONFIG: SimulationConfig = {
-  mapWidth: 30,
-  mapHeight: 30,
+  mapWidth: 48,
+  mapHeight: 48,
   seed: 42,
-  sensorRadius: 3,
+  sensorRadius: 4,
   safetyReserve: 8,         // Wh
   uncertaintyBuffer: 1.3,   // 30% extra for unknown terrain
   batteryCapacity: 120,     // Wh
   initialBattery: 110,      // Wh
   ratedSolarPower: 30,      // Watts
   panelEfficiency: 0.85,
-  resourceCount: 8,
+  resourceCount: 12,
   timePerTick: 300,         // 5 minutes per tick
   simulationSpeed: 2,       // ticks per second in auto mode
 };

@@ -33,23 +33,24 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
           padding: 32,
           maxWidth: 800,
           margin: '40px auto',
-          background: '#1a1d26',
-          border: '1px solid #ef4444',
-          borderRadius: 8,
-          color: '#f87171',
-          fontFamily: 'monospace',
+          background: '#fff4ef',
+          border: '1px solid #e8a090',
+          borderRadius: 28,
+          color: '#c45c4a',
+          fontFamily: 'Inter, system-ui, sans-serif',
+          boxShadow: '0 24px 60px rgba(90, 40, 28, 0.18)',
         }}>
-          <h2 style={{ color: '#ef4444', marginTop: 0 }}>⚠️ AEGIS Simulation Runtime Error</h2>
-          <p style={{ color: '#e2e8f0', fontSize: 14 }}>
+          <h2 style={{ color: '#c45c4a', marginTop: 0 }}>AEGIS Simulation Runtime Error</h2>
+          <p style={{ color: '#3d3229', fontSize: 14 }}>
             An unexpected error occurred during rendering. Details below:
           </p>
           <pre style={{
-            background: '#0d0f14',
+            background: '#fff8f4',
             padding: 16,
-            borderRadius: 6,
+            borderRadius: 16,
             overflow: 'auto',
             fontSize: 12,
-            color: '#fca5a5',
+            color: '#8a3d32',
             whiteSpace: 'pre-wrap',
           }}>
             {this.state.error?.stack || this.state.error?.message || 'Unknown error'}
@@ -61,11 +62,11 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
                 window.location.reload();
               }}
               style={{
-                background: '#ef4444',
+                background: '#c45c4a',
                 color: '#fff',
                 border: 'none',
                 padding: '8px 16px',
-                borderRadius: 4,
+                borderRadius: 12,
                 cursor: 'pointer',
                 fontWeight: 600,
               }}
