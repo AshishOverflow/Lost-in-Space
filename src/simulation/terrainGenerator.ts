@@ -47,9 +47,9 @@ export function generateEnvironment(config: SimulationConfig) {
   // 3. Rover starts at home base
   const roverStart: Position = { x: homeBase.x, y: homeBase.y };
 
-  // 4. Place scientific objective far from home base
-  const objX = rng.nextInt(W - 8, W - 3);
-  const objY = rng.nextInt(2, 7);
+  // 4. Place scientific objective in north-east sector far from home base
+  const objX = rng.nextInt(W - 12, W - 6);
+  const objY = rng.nextInt(5, 12);
   groundTruth[objY][objX].terrain = TerrainType.FLAT_ROCK;
   groundTruth[objY][objX].hasObjective = true;
   const objective: ScientificObjective = {
