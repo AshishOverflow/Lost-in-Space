@@ -849,7 +849,6 @@ function App() {
               onHoverCell={setHoveredCell}
             />
           </div>
-          </div>
 
           {/* Manual controls overlay */}
           {!state.isAutonomous && (
