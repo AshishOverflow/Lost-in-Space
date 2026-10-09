@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   SimulationState, SimulationConfig, DEFAULT_CONFIG,
-  ActionType, Direction, DIRECTION_VECTORS, TERRAIN_CONFIGS,
-  RoverMode, RoverAction,
+  ActionType, Direction, DIRECTION_VECTORS, TERRAIN_CONFIGS, TerrainType,
+  RoverAction,
 } from '../types/simulation';
 import {
   createInitialState, simulationTick, executeManualAction, updateDecisionGoal,
@@ -169,14 +169,16 @@ export function useSimulation(initialConfig: SimulationConfig = DEFAULT_CONFIG) 
   const manualReturn = useCallback(() => {
     setState(prev => {
       if (prev.isAutonomous) return prev;
-      const returnPath = findReturnPath(prev.beliefMap, prev.roverPosition, prev.homeBase, prev.energyCosts.baseMovement, prev.uncertaintyBuffer);
+      const returnPath = findReturnPath(prev.beliefMap, prev.roverPosition, prev.homeBase, prev.energyCosts.baseMovement, prev.uncertaintyBuffer, prev.terrainConfigs);
       if (returnPath.length === 0) return prev;
       const firstStep = returnPath[0];
-      const terrain = TERRAIN_CONFIGS[prev.beliefMap[firstStep.y][firstStep.x].terrain];
+      const activeConfigs = prev.terrainConfigs || TERRAIN_CONFIGS;
+      const cellTerrain = prev.beliefMap[firstStep.y][firstStep.x].terrain as TerrainType;
+      const terrain = (activeConfigs && activeConfigs[cellTerrain]) || TERRAIN_CONFIGS[TerrainType.FLAT_ROCK];
       const action: RoverAction = {
         type: ActionType.RETURN_TO_BASE,
         targetPosition: firstStep,
-        energyCost: prev.energyCosts.baseMovement * terrain.movementCost,
+        energyCost: prev.energyCosts.baseMovement * (terrain ? terrain.movementCost : 1.0),
         description: 'Manual return to base',
       };
       const next = executeManualAction(prev, action);

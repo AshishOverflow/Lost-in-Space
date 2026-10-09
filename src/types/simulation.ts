@@ -50,6 +50,7 @@ export interface GridCell {
   hasObjective: boolean;
   objective?: ScientificObjective;
   isHomeBase: boolean;
+  isSolarChargingPoint?: boolean;
   isRevealed: boolean;  // on belief map
 }
 
@@ -136,12 +137,15 @@ export enum RoverMode {
   COLLECTING = 'COLLECTING',
   NAVIGATING_TO_OBJECTIVE = 'NAVIGATING_TO_OBJECTIVE',
   SCANNING_OBJECTIVE = 'SCANNING_OBJECTIVE',
+  RETURNING_HOME = 'RETURNING_HOME',
   RETURNING_TO_HUB = 'RETURNING_TO_HUB',
   UPLOADING_DATA = 'UPLOADING_DATA',
   HARVESTING = 'HARVESTING',
   CONSERVING = 'CONSERVING',
   LOW_POWER = 'LOW_POWER',
   WAITING_FOR_SUNLIGHT = 'WAITING_FOR_SUNLIGHT',
+  RECHARGING = 'RECHARGING',
+  COMPLETED = 'COMPLETED',
   MISSION_COMPLETE = 'MISSION_COMPLETE',
   MISSION_FAILED = 'MISSION_FAILED',
   RECOVERY_REQUIRED = 'RECOVERY_REQUIRED',
@@ -270,6 +274,7 @@ export interface SimulationState {
   resources: Resource[];
   objectives: ScientificObjective[];
   homeBase: Position;
+  solarStations: Position[];
 
   // Rover
   roverPosition: Position;
@@ -278,7 +283,11 @@ export interface SimulationState {
   roverPath: Position[];            // planned route
   roverTrail: Position[];           // movement history
   roverTarget: Position | null;
-
+  visitedCount: Record<string, number>;
+  unreachableTargets: string[];
+  lastPositions: Position[];
+  isCharging: boolean;
+  lastSolarRechargeTick?: number;
   // Energy
   solar: SolarState;
   battery: BatteryState;

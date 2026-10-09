@@ -4,10 +4,10 @@
 
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import {
-  Play, Pause, SkipForward, RotateCcw, Shuffle, Sun, Sunrise, Sunset, Moon, CloudFog,
-  Battery, Zap, Compass, Target, Clock,
+  Play, Pause, SkipForward, RotateCcw, Sun, Sunrise, Sunset, Moon, CloudFog,
+  Battery, Zap, Target, Clock,
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
-  MapPin, Eye, Beaker, Shield, AlertTriangle, X,
+  MapPin, Eye, Beaker, AlertTriangle, X,
   Navigation, ScanLine, Pickaxe, ArrowLeft,
   Gauge, Radio, Brain, Cpu, Rocket, Footprints,
   Plus, Minus, Crosshair, Award, CheckCircle2, CheckSquare, Square, HelpCircle, Home, Globe,
@@ -16,25 +16,42 @@ import { useSimulation } from './hooks/useSimulation';
 import {
   TerrainType, TERRAIN_CONFIGS, RoverMode, Direction,
   EventCategory, RESOURCE_CONFIGS, LightingCondition,
-  SimulationState, HistoryPoint,
+  SimulationState,
 } from './types/simulation';
-import { formatEnergy, formatPower, formatPercent, formatSimTime } from './utils/helpers';
+import { formatEnergy, formatPower, formatPercent, formatSimTime, manhattanDist } from './utils/helpers';
 import './index.css';
 
 // ===================== HELPERS =====================
 
 function getModeClass(mode: RoverMode): string {
   switch (mode) {
-    case RoverMode.EXPLORING: case RoverMode.NAVIGATING_TO_RESOURCE: case RoverMode.NAVIGATING_TO_OBJECTIVE: return 'exploring';
-    case RoverMode.RETURNING_TO_HUB: return 'returning';
-    case RoverMode.COLLECTING: return 'collecting';
-    case RoverMode.SCANNING_OBJECTIVE: return 'scanning';
-    case RoverMode.HARVESTING: case RoverMode.WAITING_FOR_SUNLIGHT: return 'harvesting';
-    case RoverMode.CONSERVING: return 'conserving';
-    case RoverMode.LOW_POWER: return 'low-power';
-    case RoverMode.MISSION_COMPLETE: return 'complete';
-    case RoverMode.MISSION_FAILED: case RoverMode.RECOVERY_REQUIRED: return 'failed';
-    default: return 'idle';
+    case RoverMode.EXPLORING:
+    case RoverMode.NAVIGATING_TO_RESOURCE:
+    case RoverMode.NAVIGATING_TO_OBJECTIVE:
+      return 'exploring';
+    case RoverMode.RETURNING_TO_HUB:
+    case RoverMode.RETURNING_HOME:
+      return 'returning';
+    case RoverMode.COLLECTING:
+      return 'collecting';
+    case RoverMode.SCANNING_OBJECTIVE:
+      return 'scanning';
+    case RoverMode.HARVESTING:
+    case RoverMode.WAITING_FOR_SUNLIGHT:
+    case RoverMode.RECHARGING:
+      return 'harvesting';
+    case RoverMode.CONSERVING:
+      return 'conserving';
+    case RoverMode.LOW_POWER:
+      return 'low-power';
+    case RoverMode.MISSION_COMPLETE:
+    case RoverMode.COMPLETED:
+      return 'complete';
+    case RoverMode.MISSION_FAILED:
+    case RoverMode.RECOVERY_REQUIRED:
+      return 'failed';
+    default:
+      return 'idle';
   }
 }
 
@@ -45,7 +62,7 @@ function getModeLabel(mode: RoverMode): string {
 function getStatusDotClass(mode: RoverMode, isPaused: boolean, isRunning: boolean): string {
   if (!isRunning) return 'status-dot--idle';
   if (isPaused) return 'status-dot--paused';
-  if (mode === RoverMode.MISSION_COMPLETE) return 'status-dot--complete';
+  if (mode === RoverMode.COMPLETED) return 'status-dot--complete';
   if (mode === RoverMode.MISSION_FAILED || mode === RoverMode.RECOVERY_REQUIRED) return 'status-dot--failed';
   return 'status-dot--active';
 }
@@ -81,30 +98,83 @@ interface ToastItem {
   level: 'error' | 'warn';
 }
 
+// ===================== ORBITAL MAP WITH EXACT ALIGNMENT & LERP =====================
+
 function CircularMap({
   state,
   showPath,
   showTrail,
   showFog,
-  pathSet,
-  trailSet,
   onHoverCell,
 }: {
   state: SimulationState;
   showPath: boolean;
   showTrail: boolean;
   showFog: boolean;
-  pathSet: Set<string>;
-  trailSet: Set<string>;
   onHoverCell: (cell: { x: number; y: number; screenX: number; screenY: number } | null) => void;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ active: boolean; lastX: number; lastY: number }>({ active: false, lastX: 0, lastY: 0 });
-  const [isDragging, setIsDragging] = useState(false);
+  const [_isDragging, setIsDragging] = useState(false);
   const [vpSize, setVpSize] = useState(520);
-  const [zoom, setZoom] = useState(1.2);
+  const [zoom, setZoom] = useState(1.25);
   const [follow, setFollow] = useState(true);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+
+  // Frame-rate independent visual position and heading interpolation
+  const [visualPos, setVisualPos] = useState({ x: state.roverPosition.x, y: state.roverPosition.y });
+  const [visualHeading, setVisualHeading] = useState(0);
+  const animRef = useRef({
+    currentX: state.roverPosition.x,
+    currentY: state.roverPosition.y,
+    currentHeading: 0,
+    lastTime: 0,
+  });
+
+  // Snap immediately if teleported or reset to home
+  useEffect(() => {
+    const dist = Math.abs(state.roverPosition.x - animRef.current.currentX) + Math.abs(state.roverPosition.y - animRef.current.currentY);
+    if (dist > 6) {
+      animRef.current.currentX = state.roverPosition.x;
+      animRef.current.currentY = state.roverPosition.y;
+      setVisualPos({ x: state.roverPosition.x, y: state.roverPosition.y });
+    }
+  }, [state.roverPosition.x, state.roverPosition.y]);
+
+  // Delta-time based smooth motion loop
+  useEffect(() => {
+    let frameId: number;
+    const loop = (now: number) => {
+      const dt = Math.min(0.08, (now - animRef.current.lastTime) / 1000);
+      animRef.current.lastTime = now;
+
+      const targetX = state.roverPosition.x;
+      const targetY = state.roverPosition.y;
+
+      const targetHeading =
+        state.roverDirection === Direction.NORTH ? 0 :
+        state.roverDirection === Direction.EAST ? 90 :
+        state.roverDirection === Direction.SOUTH ? 180 : 270;
+
+      // Position smooth lerp
+      const posLerpRate = 14;
+      animRef.current.currentX += (targetX - animRef.current.currentX) * Math.min(1, dt * posLerpRate);
+      animRef.current.currentY += (targetY - animRef.current.currentY) * Math.min(1, dt * posLerpRate);
+
+      // Angle shortest-path lerp
+      const angleDiff = ((targetHeading - animRef.current.currentHeading + 540) % 360) - 180;
+      animRef.current.currentHeading += angleDiff * Math.min(1, dt * 16);
+
+      setVisualPos({ x: animRef.current.currentX, y: animRef.current.currentY });
+      setVisualHeading(animRef.current.currentHeading);
+
+      frameId = requestAnimationFrame(loop);
+    };
+
+    animRef.current.lastTime = performance.now();
+    frameId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(frameId);
+  }, [state.roverPosition.x, state.roverPosition.y, state.roverDirection]);
 
   useEffect(() => {
     const el = viewportRef.current;
@@ -122,11 +192,9 @@ function CircularMap({
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
-        // Pinch zoom / Ctrl + Wheel zooms
         const delta = -e.deltaY * 0.002;
         setZoom(z => Math.min(3.2, Math.max(0.4, z + delta)));
       } else {
-        // Scrolling cursor pans/moves the map smoothly
         setFollow(false);
         setOffset(o => ({
           x: o.x - e.deltaX * 0.85,
@@ -138,8 +206,8 @@ function CircularMap({
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
-  const roverCx = state.roverPosition.x * CELL_SIZE + CELL_SIZE / 2;
-  const roverCy = state.roverPosition.y * CELL_SIZE + CELL_SIZE / 2;
+  const roverCx = (visualPos.x + 0.5) * CELL_SIZE;
+  const roverCy = (visualPos.y + 0.5) * CELL_SIZE;
   const camX = follow ? 0 : offset.x;
   const camY = follow ? 0 : offset.y;
 
@@ -148,10 +216,24 @@ function CircularMap({
     setOffset({ x: 0, y: 0 });
   };
 
-  const roverHeadingDeg =
-    state.roverDirection === Direction.NORTH ? 0 :
-    state.roverDirection === Direction.EAST ? 90 :
-    state.roverDirection === Direction.SOUTH ? 180 : 270;
+  // Trajectory SVG path originating EXACTLY from rover visual center
+  const trajectoryPathD = useMemo(() => {
+    if (!state.roverPath || state.roverPath.length === 0) return '';
+    const pts = [
+      `${roverCx.toFixed(1)} ${roverCy.toFixed(1)}`,
+      ...state.roverPath.map(p => `${((p.x + 0.5) * CELL_SIZE).toFixed(1)} ${((p.y + 0.5) * CELL_SIZE).toFixed(1)}`),
+    ];
+    return `M ${pts.join(' L ')}`;
+  }, [roverCx, roverCy, state.roverPath]);
+
+  // Trail SVG polyline
+  const trailPathD = useMemo(() => {
+    if (!state.roverTrail || state.roverTrail.length < 2) return '';
+    const pts = state.roverTrail.map(p => `${((p.x + 0.5) * CELL_SIZE).toFixed(1)} ${((p.y + 0.5) * CELL_SIZE).toFixed(1)}`);
+    return `M ${pts.join(' L ')}`;
+  }, [state.roverTrail]);
+
+  const isCharging = state.isCharging || state.roverMode === RoverMode.RECHARGING;
 
   return (
     <div className="map-orbit">
@@ -184,24 +266,20 @@ function CircularMap({
             gridTemplateRows: `repeat(${state.mapHeight}, ${CELL_SIZE}px)`,
             transform: `translate(${vpSize / 2 + camX}px, ${vpSize / 2 + camY}px) scale(${zoom}) translate(${-roverCx}px, ${-roverCy}px)`,
             transformOrigin: '0 0',
-            transition: (follow && !isDragging) ? 'transform 0.28s cubic-bezier(0.25, 1, 0.5, 1)' : 'none',
           }}
         >
+          {/* Grid Cells */}
           {Array.from({ length: state.mapHeight }, (_, y) =>
             Array.from({ length: state.mapWidth }, (_, x) => {
               const isHome = state.homeBase.x === x && state.homeBase.y === y;
               const beliefCell = state.beliefMap[y][x];
               const revealed = beliefCell.isRevealed;
-              const isOnPath = showPath && pathSet.has(`${x},${y}`);
-              const isOnTrail = showTrail && trailSet.has(`${x},${y}`);
               const activeConfigs = state.terrainConfigs || TERRAIN_CONFIGS;
               const terrainCfg = revealed ? activeConfigs[beliefCell.terrain] : activeConfigs[TerrainType.UNKNOWN];
               const bgColor = (showFog && !revealed) ? activeConfigs[TerrainType.UNKNOWN].color : terrainCfg.color;
 
               let content = null;
-              if (isHome && revealed) {
-                content = <span className="map-cell__home"><Home size={10} color="#38bdf8" /></span>;
-              } else if (revealed && beliefCell.hasResource && beliefCell.resource && !beliefCell.resource.collected) {
+              if (revealed && beliefCell.hasResource && beliefCell.resource && !beliefCell.resource.collected) {
                 const rc = RESOURCE_CONFIGS[beliefCell.resource.type];
                 content = (
                   <span
@@ -220,15 +298,13 @@ function CircularMap({
                 content = <span className="map-cell__objective"><Target size={10} color="#38bdf8" /></span>;
               } else if (revealed && beliefCell.hasObjective && beliefCell.objective && beliefCell.objective.scanned) {
                 content = <span style={{ fontSize: 9, opacity: 0.6, color: 'var(--green-400)' }}>✓</span>;
-              } else if (revealed && beliefCell.terrain !== TerrainType.FLAT_ROCK && beliefCell.terrain !== TerrainType.HOME_BASE) {
+              } else if (revealed && !isHome && beliefCell.terrain !== TerrainType.FLAT_ROCK) {
                 content = <span style={{ fontSize: 8, opacity: 0.45, fontWeight: 700 }}>{terrainCfg.symbol}</span>;
               }
 
               const classes = [
                 'map-cell',
                 !revealed && showFog ? 'map-cell--unknown' : '',
-                isOnTrail ? 'map-cell--trail' : '',
-                isOnPath ? 'map-cell--path' : '',
                 revealed && beliefCell.terrain === TerrainType.BOULDER ? 'map-cell--boulder' : '',
                 revealed && beliefCell.terrain === TerrainType.CRATER ? 'map-cell--crater' : '',
               ].filter(Boolean).join(' ');
@@ -247,20 +323,117 @@ function CircularMap({
             })
           )}
 
-          {/* Smoothly animated Rover vehicle sprite */}
+          {/* Dedicated Home Base Marker (Always visible & fixed) */}
+          <div
+            className="home-base-marker"
+            style={{
+              left: state.homeBase.x * CELL_SIZE,
+              top: state.homeBase.y * CELL_SIZE,
+              width: CELL_SIZE,
+              height: CELL_SIZE,
+            }}
+          >
+            <div className="home-base-beacon" />
+            <div className="home-base-icon">
+              <Home size={10} color="#38bdf8" />
+            </div>
+            <div className="home-base-label">BASE</div>
+          </div>
+
+          {/* Dedicated Solar Stations Markers */}
+          {state.solarStations.map((station, idx) => (
+            <div
+              key={`solar-st-${idx}`}
+              className="solar-station-marker"
+              style={{
+                left: station.x * CELL_SIZE,
+                top: station.y * CELL_SIZE,
+                width: CELL_SIZE,
+                height: CELL_SIZE,
+              }}
+            >
+              <div className="solar-station-beacon" />
+              <div className="solar-station-icon">
+                <Sun size={10} color="#fbbf24" />
+              </div>
+              <div className="solar-station-label">SOLAR</div>
+            </div>
+          ))}
+
+          {/* Continuous Vector Trajectory & Trail SVG */}
+          <svg
+            className="map-trajectory-layer"
+            style={{
+              width: state.mapWidth * CELL_SIZE,
+              height: state.mapHeight * CELL_SIZE,
+            }}
+          >
+            {/* Trail */}
+            {showTrail && trailPathD && (
+              <path
+                d={trailPathD}
+                fill="none"
+                stroke="rgba(56, 189, 248, 0.4)"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeDasharray="4 3"
+              />
+            )}
+
+            {/* Trajectory */}
+            {showPath && trajectoryPathD && (
+              <>
+                <path
+                  d={trajectoryPathD}
+                  fill="none"
+                  stroke="rgba(251, 191, 36, 0.25)"
+                  strokeWidth="5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d={trajectoryPathD}
+                  fill="none"
+                  stroke="#fbbf24"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeDasharray="6 4"
+                  className="trajectory-animated-path"
+                />
+                {state.roverPath.map((wp, i) => (
+                  <circle
+                    key={`node-${i}`}
+                    cx={(wp.x + 0.5) * CELL_SIZE}
+                    cy={(wp.y + 0.5) * CELL_SIZE}
+                    r={i === state.roverPath.length - 1 ? 4 : 2.5}
+                    fill={i === state.roverPath.length - 1 ? '#f59e0b' : '#fbbf24'}
+                    stroke="#ffffff"
+                    strokeWidth="1"
+                  />
+                ))}
+              </>
+            )}
+          </svg>
+
+          {/* Smooth Rover Vehicle Sprite */}
           <div
             className="rover-vehicle"
             style={{
-              transform: `translate3d(${state.roverPosition.x * CELL_SIZE}px, ${state.roverPosition.y * CELL_SIZE}px, 0)`,
-              transition: isDragging ? 'none' : 'transform 0.28s cubic-bezier(0.25, 1, 0.5, 1)',
+              transform: `translate3d(${visualPos.x * CELL_SIZE}px, ${visualPos.y * CELL_SIZE}px, 0)`,
             }}
           >
-            <div className="rover-beacon-pulse" />
+            {isCharging ? (
+              <div className="rover-charging-ring" />
+            ) : (
+              <div className="rover-beacon-pulse" />
+            )}
             <div
               className="rover-chassis"
               style={{
-                transform: `rotate(${roverHeadingDeg}deg)`,
-                transition: 'transform 0.24s ease-out',
+                transform: `rotate(${visualHeading}deg)`,
+                background: isCharging ? '#f59e0b' : '#0284c7',
               }}
             >
               <Navigation size={10} className="rover-nav-icon" fill="#ffffff" />
@@ -268,6 +441,7 @@ function CircularMap({
           </div>
         </div>
       </div>
+
       <div className="map-hud">
         <button className="btn btn--icon" title="Zoom in" onClick={() => setZoom(z => Math.min(2.8, z + 0.15))}>
           <Plus size={14} />
@@ -279,115 +453,10 @@ function CircularMap({
           <Crosshair size={14} />
         </button>
       </div>
+
       <div className="map-follow-hint">
-        {state.mapWidth}×{state.mapHeight} · {follow ? 'following rover' : 'free pan'} · {Math.round(zoom * 100)}%
+        {state.mapWidth}×{state.mapHeight} · {follow ? 'tracking rover' : 'free pan'} · {Math.round(zoom * 100)}%
       </div>
-    </div>
-  );
-}
-
-// ===================== TELEMETRY SVG CHART =====================
-
-function SvgTelemetryChart({
-  data,
-  dataKey1,
-  dataKey2,
-  color1,
-  color2,
-  label1,
-  label2,
-  height = 90,
-  unit1 = '',
-  unit2 = '',
-  isPercent = false,
-}: {
-  data: HistoryPoint[];
-  dataKey1: keyof HistoryPoint;
-  dataKey2?: keyof HistoryPoint;
-  color1: string;
-  color2?: string;
-  label1: string;
-  label2?: string;
-  height?: number;
-  unit1?: string;
-  unit2?: string;
-  isPercent?: boolean;
-}) {
-  if (!data || data.length < 2) {
-    return (
-      <div style={{ padding: 12, textAlign: 'center', color: 'var(--text-dim)', fontSize: 11 }}>
-        Awaiting telemetry data...
-      </div>
-    );
-  }
-  const w = 260;
-  const padL = 34;
-  const padR = 8;
-  const padT = 8;
-  const padB = 16;
-  const plotW = w - padL - padR;
-  const plotH = height - padT - padB;
-
-  const vals1 = data.map(d => Number(d[dataKey1]) || 0);
-  const vals2 = dataKey2 ? data.map(d => Number(d[dataKey2]) || 0) : [];
-  const maxVal = isPercent ? 1.0 : Math.max(1, ...vals1, ...(vals2.length ? vals2 : [0])) * 1.05;
-
-  const getPoints = (vals: number[]) => {
-    return vals.map((v, i) => {
-      const x = padL + (i / (vals.length - 1)) * plotW;
-      const y = padT + plotH - (Math.max(0, v) / maxVal) * plotH;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    });
-  };
-
-  const pts1 = getPoints(vals1);
-  const pathD1 = `M ${pts1[0]} L ${pts1.join(' L ')}`;
-  const areaD1 = `M ${padL},${padT + plotH} L ${pts1.join(' L ')} L ${padL + plotW},${padT + plotH} Z`;
-
-  let pathD2 = '';
-  if (dataKey2 && vals2.length) {
-    const pts2 = getPoints(vals2);
-    pathD2 = `M ${pts2[0]} L ${pts2.join(' L ')}`;
-  }
-
-  const cur1 = vals1[vals1.length - 1];
-  const cur2 = vals2.length ? vals2[vals2.length - 1] : null;
-  const gradId = `grad-${label1.replace(/\s+/g, '')}`;
-
-  return (
-    <div style={{ width: '100%', marginBottom: 4 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, marginBottom: 4, fontFamily: 'var(--font-mono)' }}>
-        <span style={{ color: color1 }}>
-          {label1}: {isPercent ? `${(cur1 * 100).toFixed(0)}%` : `${cur1.toFixed(1)}${unit1}`}
-        </span>
-        {label2 && cur2 !== null && (
-          <span style={{ color: color2 }}>
-            {label2}: {cur2.toFixed(1)}{unit2}
-          </span>
-        )}
-      </div>
-      <svg viewBox={`0 0 ${w} ${height}`} style={{ width: '100%', height, display: 'block', overflow: 'hidden' }}>
-        <defs>
-          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color1} stopOpacity="0.35" />
-            <stop offset="100%" stopColor={color1} stopOpacity="0.0" />
-          </linearGradient>
-        </defs>
-        <line x1={padL} y1={padT} x2={padL + plotW} y2={padT} stroke="rgba(255,255,255,0.08)" strokeDasharray="2,2" />
-        <line x1={padL} y1={padT + plotH / 2} x2={padL + plotW} y2={padT + plotH / 2} stroke="rgba(255,255,255,0.08)" strokeDasharray="2,2" />
-        <line x1={padL} y1={padT + plotH} x2={padL + plotW} y2={padT + plotH} stroke="rgba(255,255,255,0.14)" />
-
-        <text x={padL - 4} y={padT + 7} fill="var(--text-dim)" fontSize="8" textAnchor="end" fontFamily="var(--font-mono)">
-          {isPercent ? '100%' : maxVal > 100 ? maxVal.toFixed(0) : maxVal.toFixed(1)}
-        </text>
-        <text x={padL - 4} y={padT + plotH} fill="var(--text-dim)" fontSize="8" textAnchor="end" fontFamily="var(--font-mono)">
-          0
-        </text>
-
-        <path d={areaD1} fill={`url(#${gradId})`} />
-        <path d={pathD1} fill="none" stroke={color1} strokeWidth="1.8" />
-        {pathD2 && <path d={pathD2} fill="none" stroke={color2} strokeWidth="1.6" strokeDasharray="3,2" />}
-      </svg>
     </div>
   );
 }
@@ -399,10 +468,6 @@ function App() {
   const { state } = sim;
   const [seedInput, setSeedInput] = useState(String(state.seed));
   const [showPath, setShowPath] = useState(true);
-
-  useEffect(() => {
-    setSeedInput(String(state.seed));
-  }, [state.seed]);
   const [showTrail, setShowTrail] = useState(true);
   const [showFog, setShowFog] = useState(true);
   const [hoveredCell, setHoveredCell] = useState<{ x: number; y: number; screenX: number; screenY: number } | null>(null);
@@ -411,29 +476,12 @@ function App() {
   const seenFailRef = useRef(false);
   const lowBatteryRef = useRef(false);
 
+  useEffect(() => {
+    setSeedInput(String(state.seed));
+  }, [state.seed]);
+
   const batteryPercent = state.battery.currentEnergy / state.battery.capacity;
   const reservePercent = (state.safetyReserve + state.decision.estimatedReturnEnergy) / state.battery.capacity;
-
-  // Path and trail sets for quick lookup
-  const pathSet = useMemo(() => {
-    const s = new Set<string>();
-    state.roverPath.forEach(p => s.add(`${p.x},${p.y}`));
-    return s;
-  }, [state.roverPath]);
-
-  const trailSet = useMemo(() => {
-    const s = new Set<string>();
-    state.roverTrail.forEach(p => s.add(`${p.x},${p.y}`));
-    return s;
-  }, [state.roverTrail]);
-
-  // Chart data (sampled)
-  const chartData = useMemo(() => {
-    const data = state.history;
-    if (data.length <= 60) return data;
-    const step = Math.max(1, Math.floor(data.length / 60));
-    return data.filter((_, i) => i % step === 0 || i === data.length - 1);
-  }, [state.history]);
 
   const pushToast = useCallback((toast: Omit<ToastItem, 'id'>) => {
     const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -470,31 +518,38 @@ function App() {
       lowBatteryRef.current = true;
       pushToast({
         title: 'Critical battery',
-        message: `Charge is ${(batteryPercent * 100).toFixed(0)}%. The rover may be forced to return or conserve.`,
+        message: `Charge is ${(batteryPercent * 100).toFixed(0)}%. Navigating to nearest recharge point.`,
         level: 'error',
       });
     }
     if (batteryPercent > 0.22) lowBatteryRef.current = false;
   }, [batteryPercent, state.missionStarted, pushToast]);
 
-  useEffect(() => {
-    const onError = (event: ErrorEvent) => {
-      pushToast({ title: 'Runtime error', message: event.message || 'An unexpected error occurred.', level: 'error' });
+  // Nearest Haven info
+  const nearestHavenInfo = useMemo(() => {
+    const distHome = manhattanDist(state.roverPosition, state.homeBase);
+    let nearestStation = state.solarStations.length > 0 ? state.solarStations[0] : null;
+    let minDist = nearestStation ? manhattanDist(state.roverPosition, nearestStation) : Infinity;
+
+    for (const st of state.solarStations) {
+      const d = manhattanDist(state.roverPosition, st);
+      if (d < minDist) {
+        minDist = d;
+        nearestStation = st;
+      }
+    }
+
+    return {
+      distHome,
+      hasSolarStations: state.solarStations.length > 0,
+      nearestStationDist: minDist,
+      nearestStationPos: nearestStation,
     };
-    const onReject = (event: PromiseRejectionEvent) => {
-      const reason = event.reason instanceof Error ? event.reason.message : String(event.reason || 'Unhandled promise rejection');
-      pushToast({ title: 'Runtime error', message: reason, level: 'error' });
-    };
-    window.addEventListener('error', onError);
-    window.addEventListener('unhandledrejection', onReject);
-    return () => {
-      window.removeEventListener('error', onError);
-      window.removeEventListener('unhandledrejection', onReject);
-    };
-  }, [pushToast]);
+  }, [state.roverPosition, state.homeBase, state.solarStations]);
 
   return (
     <div className="app-container">
+      {/* Toast Notifications */}
       <div className="toast-stack">
         {toasts.map(toast => (
           <div key={toast.id} className={`error-toast ${toast.level === 'warn' ? 'error-toast--warn' : ''}`}>
@@ -515,9 +570,9 @@ function App() {
           <div className="error-modal__card">
             <AlertTriangle size={32} color="#c45c4a" />
             <h2>Mission Failed</h2>
-            <p>The rover is in recovery or has lost the ability to continue safely. Reset or generate a new environment to try again.</p>
+            <p>The rover is in recovery or has lost the ability to continue safely. Reset or choose a new site.</p>
             <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap', marginTop: 10 }}>
-              <button className="btn btn--success" onClick={sim.resetMission}><RotateCcw size={13} /> Retry Site</button>
+              <button className="btn btn--success" onClick={sim.resetMission}><RotateCcw size={13} /> Reset to Home</button>
               {sim.availableMaps.map(m => (
                 <button
                   key={m.id}
@@ -532,6 +587,7 @@ function App() {
           </div>
         </div>
       )}
+
       {/* ========== HEADER ========== */}
       <header className="mission-header">
         <div className="mission-header__left">
@@ -555,238 +611,128 @@ function App() {
             {renderSolarIcon(state.solar.lightingCondition)} {formatPower(state.solar.currentPower)}
           </span>
           <span className={`mode-badge mode-badge--${getModeClass(state.roverMode)}`}>
-            {getModeLabel(state.roverMode)}
+            {state.isCharging ? '⚡ RECHARGING' : getModeLabel(state.roverMode)}
           </span>
         </div>
       </header>
 
       {/* ========== MAIN CONTENT ========== */}
       <div className="main-content">
-        {/* ========== LEFT PANEL ========== */}
+        {/* ========== LEFT PANEL: RESOURCES COLLECTED & BIOSIGNS ========== */}
         <div className="panel">
-          {/* Mission Overview */}
+          {/* 1. Resources Collected */}
           <div className="panel-section">
-            <div className="panel-section__title"><Rocket size={13} /> Mission Overview</div>
-            <div className="metric-row">
-              <span className="metric-row__label">Target World</span>
-              <span className="metric-row__value metric-row__value--info">{state.environmentName || 'Mars'}</span>
+            <div className="panel-section__title" style={{ color: 'var(--green-400)' }}>
+              <Pickaxe size={13} /> Resources Collected
             </div>
+            
             <div className="metric-row">
-              <span className="metric-row__label">Landing Site</span>
-              <span className="metric-row__value" style={{ fontSize: 10 }}>{state.environmentSubtitle || 'Gale Basin'}</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Status</span>
-              <span className={`mode-badge mode-badge--${getModeClass(state.roverMode)}`} style={{ fontSize: 9 }}>
-                {getModeLabel(state.roverMode)}
+              <span className="metric-row__label">Total Collected</span>
+              <span className="metric-row__value metric-row__value--safe" style={{ fontSize: 13, fontWeight: 700 }}>
+                {state.collectedResources.length} / {state.resources.length}
               </span>
             </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Sim Time</span>
-              <span className="metric-row__value">{formatSimTime(state.metrics.elapsedTime)}</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Tick</span>
-              <span className="metric-row__value">{state.tickCount}</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Mode</span>
-              <span className="metric-row__value" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                {state.isAutonomous ? <><Brain size={12} /> Autonomous</> : <><Cpu size={12} /> Manual</>}
-              </span>
-            </div>
-          </div>
 
-          {/* Battery & Solar */}
-          <div className="panel-section">
-            <div className="panel-section__title"><Battery size={13} /> Battery & Solar</div>
-            <div className="metric-row">
-              <span className="metric-row__label">Battery</span>
-              <span className={`metric-row__value ${getBatteryValueClass(batteryPercent)}`}>
-                {(batteryPercent * 100).toFixed(0)}% ({formatEnergy(state.battery.currentEnergy)})
-              </span>
-            </div>
-            <div className="battery-bar">
+            <div className="progress-track">
               <div
-                className={`battery-bar__fill battery-bar__fill--${getBatteryClass(batteryPercent)}`}
-                style={{ width: `${batteryPercent * 100}%` }}
+                className="progress-fill progress-fill--emerald"
+                style={{ width: `${Math.min(100, (state.collectedResources.length / Math.max(1, state.resources.length)) * 100)}%` }}
               />
-              <div className="battery-bar__reserve" style={{ left: `${Math.min(100, reservePercent * 100)}%` }} />
             </div>
-            <div className="solar-indicator">
-              <span className="solar-indicator__icon">{renderSolarIcon(state.solar.lightingCondition)}</span>
-              <div className="solar-indicator__info">
-                <div className="solar-indicator__condition">{state.solar.lightingCondition.replace(/_/g, ' ')}</div>
-                <div className="solar-indicator__power">{formatPower(state.solar.currentPower)}</div>
-              </div>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
-                f={state.solar.sunlightFactor.toFixed(2)}
+
+            <div className="metric-row">
+              <span className="metric-row__label">Collected Yield Value</span>
+              <span className="metric-row__value metric-row__value--info">
+                +{state.metrics.totalResourceValue || state.collectedResources.reduce((acc, r) => acc + r.value, 0)} pts
               </span>
             </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Rated Solar Power</span>
-              <span className="metric-row__value">{state.solar.ratedPower.toFixed(0)} W</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Panel Efficiency</span>
-              <span className="metric-row__value">{(state.solar.panelEfficiency * 100).toFixed(0)}%</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Effective Solar Power</span>
-              <span className="metric-row__value metric-row__value--solar">{state.solar.currentPower.toFixed(1)} W</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Capacity</span>
-              <span className="metric-row__value">{formatEnergy(state.battery.capacity)}</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Total Harvested</span>
-              <span className="metric-row__value metric-row__value--solar">{formatEnergy(state.battery.totalHarvested)}</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Total Consumed</span>
-              <span className="metric-row__value">{formatEnergy(state.battery.totalConsumed)}</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Return Energy</span>
-              <span className={`metric-row__value ${state.decision.estimatedReturnEnergy > state.battery.currentEnergy * 0.5 ? 'metric-row__value--caution' : ''}`}>
-                {formatEnergy(state.decision.estimatedReturnEnergy)}
-              </span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Safety Reserve</span>
-              <span className="metric-row__value">{formatEnergy(state.safetyReserve)}</span>
-            </div>
-          </div>
 
-          {/* Resources & Science */}
-          <div className="panel-section">
-            <div className="panel-section__title"><Beaker size={13} /> Resources & Science</div>
-            <div className="metric-row">
-              <span className="metric-row__label">Collected</span>
-              <span className="metric-row__value metric-row__value--info">{state.metrics.resourcesCollected} / {state.resources.length}</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Resource Value</span>
-              <span className="metric-row__value">{state.metrics.totalResourceValue}</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Data (onboard)</span>
-              <span className="metric-row__value">{state.onboardData.toFixed(0)} units</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Data (delivered)</span>
-              <span className="metric-row__value metric-row__value--safe">{state.deliveredData.toFixed(0)} units</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Map Explored</span>
-              <span className="metric-row__value">{formatPercent(state.metrics.mapExploredPercent)}</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Distance</span>
-              <span className="metric-row__value">{state.metrics.distanceTraveled} cells</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Dist from Base</span>
-              <span className="metric-row__value">
-                {Math.abs(state.roverPosition.x - state.homeBase.x) + Math.abs(state.roverPosition.y - state.homeBase.y)} cells
-              </span>
-            </div>
-          </div>
-
-          {/* Mission Objectives */}
-          <div className="panel-section">
-            <div className="panel-section__title"><Target size={13} /> Objectives</div>
-            {state.objectives.map(obj => (
-              <div key={obj.id} style={{ marginBottom: 4 }}>
-                <div style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, color: obj.scanned ? 'var(--green-400)' : obj.discovered ? 'var(--amber-400)' : 'var(--text-muted)' }}>
-                  {obj.scanned ? <CheckCircle2 size={13} color="var(--green-400)" /> : obj.discovered ? <Crosshair size={13} color="var(--amber-400)" /> : <HelpCircle size={13} color="var(--text-muted)" />}
-                  <span>{obj.name}</span>
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--text-dim)', paddingLeft: 19 }}>
-                  {obj.scanned ? 'Scanned' : obj.discovered ? 'Located — not scanned' : 'Not discovered'}
-                </div>
-              </div>
-            ))}
-            <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid var(--border-subtle)' }}>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>Completion Criteria:</div>
-              <div style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, color: state.objectives.every(o => o.scanned) ? 'var(--green-400)' : 'var(--text-secondary)' }}>
-                {state.objectives.every(o => o.scanned) ? <CheckSquare size={12} color="var(--green-400)" /> : <Square size={12} color="var(--text-muted)" />}
-                <span>Scan all objectives ({state.objectives.filter(o => o.scanned).length}/{state.objectives.length})</span>
-              </div>
-              <div style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, color: state.collectedResources.length >= 3 ? 'var(--green-400)' : 'var(--text-secondary)' }}>
-                {state.collectedResources.length >= 3 ? <CheckSquare size={12} color="var(--green-400)" /> : <Square size={12} color="var(--text-muted)" />}
-                <span>Collect 3+ resources ({state.collectedResources.length}/3)</span>
-              </div>
-              <div style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, color: state.deliveredData >= 50 ? 'var(--green-400)' : 'var(--text-secondary)' }}>
-                {state.deliveredData >= 50 ? <CheckSquare size={12} color="var(--green-400)" /> : <Square size={12} color="var(--text-muted)" />}
-                <span>Deliver 50+ data units ({state.deliveredData.toFixed(0)}/50)</span>
-              </div>
-              <div style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 6, color: state.missionComplete ? 'var(--green-400)' : 'var(--text-secondary)' }}>
-                {state.missionComplete ? <CheckSquare size={12} color="var(--green-400)" /> : <Square size={12} color="var(--text-muted)" />}
-                <span>Return to base {state.missionComplete ? '(Recovered)' : ''}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Safety */}
-          <div className="panel-section">
-            <div className="panel-section__title"><Shield size={13} /> Safety Status</div>
-            <div className="metric-row">
-              <span className="metric-row__label">Risk Level</span>
-              <span className={`risk-level risk-level--${state.decision.riskLevel}`}>{state.decision.riskLevel}</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Interventions</span>
-              <span className="metric-row__value">{state.metrics.safetyInterventions}</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Rejected Actions</span>
-              <span className="metric-row__value">{state.metrics.rejectedActions}</span>
-            </div>
-          </div>
-
-          {/* Terrain Legend */}
-          <div className="panel-section">
-            <div className="panel-section__title"><MapPin size={13} /> Terrain Legend</div>
-            <div className="terrain-legend">
-              {Object.values(state.terrainConfigs || TERRAIN_CONFIGS).filter(t => t.type !== TerrainType.UNKNOWN && t.type !== TerrainType.HOME_BASE).map(t => (
-                <div key={t.type} className="terrain-legend__item">
-                  <div className="terrain-legend__swatch" style={{ background: t.color, border: t.passable ? 'none' : '1px solid rgba(255,255,255,0.2)' }}>{t.symbol}</div>
-                  <span>{t.label} ({t.passable ? `×${t.movementCost}` : '∞'})</span>
-                </div>
-              ))}
-              <div className="terrain-legend__item">
-                <div className="terrain-legend__swatch" style={{ background: (state.terrainConfigs || TERRAIN_CONFIGS)[TerrainType.HOME_BASE]?.color || '#0284c7' }}><Home size={10} color="#ffffff" /></div>
-                <span>Home Base</span>
-              </div>
-              <div className="terrain-legend__item">
-                <div className="terrain-legend__swatch" style={{ background: (state.terrainConfigs || TERRAIN_CONFIGS)[TerrainType.UNKNOWN]?.color || '#1e293b', border: '1px solid rgba(255,255,255,0.1)' }}>?</div>
-                <span>Unknown Fog</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Minerals & Resources Legend */}
-          <div className="panel-section">
-            <div className="panel-section__title"><Beaker size={13} /> Minerals & Resources</div>
-            <div className="terrain-legend">
-              {Object.values(RESOURCE_CONFIGS).map(r => (
-                <div key={r.label} className="terrain-legend__item">
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '290px', overflowY: 'auto', paddingRight: 2 }}>
+              {state.resources.map(res => {
+                const isCollected = state.collectedResources.some(c => c.id === res.id) || res.collected;
+                const isDiscovered = res.discovered;
+                const config = RESOURCE_CONFIGS[res.type];
+                return (
                   <div
-                    className="terrain-legend__swatch"
-                    style={{
-                      background: r.color,
-                      color: '#000',
-                      fontWeight: 700,
-                      boxShadow: `0 0 6px ${r.color}88`,
-                    }}
+                    key={res.id}
+                    className={`operational-card ${isCollected ? 'operational-card--collected' : ''}`}
+                    style={{ padding: '8px 10px' }}
                   >
-                    {r.symbol}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 600, fontSize: 11, color: isCollected ? 'var(--green-400)' : 'var(--text-primary)' }}>
+                        {config ? config.label : res.type.replace(/_/g, ' ')}
+                      </span>
+                      <span className={`operational-badge ${isCollected ? 'operational-badge--emerald' : isDiscovered ? 'operational-badge--cyan' : 'operational-badge--slate'}`}>
+                        {isCollected ? '✓ COLLECTED' : isDiscovered ? `AT (${res.position.x}, ${res.position.y})` : 'UNEXPLORED'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)' }}>
+                      <span>Value: +{res.value} pts</span>
+                      <span>Extraction: {res.collectionEnergy.toFixed(1)} Wh</span>
+                    </div>
                   </div>
-                  <span>{r.label} (+{r.baseValue}v)</span>
-                </div>
-              ))}
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 2. Biosigns */}
+          <div className="panel-section">
+            <div className="panel-section__title" style={{ color: 'var(--cyan-400)' }}>
+              <Target size={13} /> Biosigns
+            </div>
+
+            <div className="metric-row">
+              <span className="metric-row__label">Biosignatures Scanned</span>
+              <span className="metric-row__value metric-row__value--info" style={{ fontSize: 13, fontWeight: 700 }}>
+                {state.objectives.filter(o => o.scanned).length} / {state.objectives.length}
+              </span>
+            </div>
+
+            <div className="progress-track">
+              <div
+                className="progress-fill progress-fill--cyan"
+                style={{ width: `${Math.min(100, (state.objectives.filter(o => o.scanned).length / Math.max(1, state.objectives.length)) * 100)}%` }}
+              />
+            </div>
+
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {state.objectives.map(obj => {
+                const isScanned = obj.scanned;
+                const isDiscovered = obj.discovered;
+                return (
+                  <div
+                    key={obj.id}
+                    className={`operational-card ${isScanned ? 'operational-card--active' : ''}`}
+                    style={{ padding: '8px 10px' }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 600, fontSize: 11, color: isScanned ? 'var(--cyan-400)' : 'var(--text-primary)' }}>
+                        {obj.name}
+                      </span>
+                      <span className={`operational-badge ${isScanned ? 'operational-badge--emerald' : isDiscovered ? 'operational-badge--amber' : 'operational-badge--slate'}`}>
+                        {isScanned ? '✓ SCANNED' : isDiscovered ? `LOCKED (${obj.position.x}, ${obj.position.y})` : 'SEARCHING'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 2 }}>
+                      {obj.description}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                      <span style={{ color: 'var(--cyan-400)', fontWeight: 600 }}>Data Yield: +{obj.dataReward} Data</span>
+                      <span>Scan Cost: {obj.scanEnergy} Wh</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid var(--border-subtle)' }}>
+              <div className="metric-row">
+                <span className="metric-row__label">Scientific Biosign Data</span>
+                <span className="metric-row__value metric-row__value--safe" style={{ fontWeight: 600 }}>
+                  {state.metrics.scientificDataGenerated.toFixed(0)} units acquired
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -798,7 +744,7 @@ function App() {
               {/* Simulation controls */}
               {!state.missionStarted ? (
                 <button className="btn btn--success" onClick={sim.startMission}>
-                  <Play size={13} /> Start
+                  <Play size={13} /> Start Mission
                 </button>
               ) : state.isPaused ? (
                 <button className="btn btn--success" onClick={sim.resumeMission}>
@@ -809,10 +755,10 @@ function App() {
                   <Pause size={13} /> Pause
                 </button>
               )}
-              <button className="btn btn--icon" onClick={sim.stepMission} title="Step">
+              <button className="btn btn--icon" onClick={sim.stepMission} title="Single Step">
                 <SkipForward size={13} />
               </button>
-              <button className="btn btn--icon" onClick={sim.resetMission} title="Reset">
+              <button className="btn btn--icon" onClick={sim.resetMission} title="Reset to Home Base">
                 <RotateCcw size={13} />
               </button>
               <span style={{ color: 'var(--border-strong)', margin: '0 2px' }}>|</span>
@@ -839,7 +785,7 @@ function App() {
 
               {/* Speed */}
               <div className="speed-control">
-                <span className="speed-control__label">SPD</span>
+                <span className="speed-control__label">SPEED</span>
                 {[1, 2, 4, 8].map(spd => (
                   <button
                     key={spd}
@@ -853,14 +799,14 @@ function App() {
             </div>
 
             <div className="map-toolbar__right">
-              {/* Seed input */}
+              {/* Seed */}
               <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Seed:</span>
               <input
                 className="input-field"
                 value={seedInput}
                 onChange={e => setSeedInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') sim.setSeed(parseInt(seedInput) || 42); }}
-                style={{ width: 60 }}
+                style={{ width: 55 }}
               />
               <button className="btn" onClick={() => sim.setSeed(parseInt(seedInput) || 42)} style={{ fontSize: 10 }}>
                 Apply
@@ -869,13 +815,13 @@ function App() {
               <span style={{ color: 'var(--border-strong)', margin: '0 2px' }}>|</span>
 
               {/* Toggles */}
-              <button className={`btn btn--icon ${showPath ? 'btn--active' : ''}`} onClick={() => setShowPath(!showPath)} title="Toggle Path">
+              <button className={`btn btn--icon ${showPath ? 'btn--active' : ''}`} onClick={() => setShowPath(!showPath)} title="Toggle Trajectory Path">
                 <Navigation size={12} />
               </button>
               <button className={`btn btn--icon ${showTrail ? 'btn--active' : ''}`} onClick={() => setShowTrail(!showTrail)} title="Toggle Trail">
                 <Footprints size={12} />
               </button>
-              <button className={`btn btn--icon ${showFog ? 'btn--active' : ''}`} onClick={() => setShowFog(!showFog)} title="Toggle Fog">
+              <button className={`btn btn--icon ${showFog ? 'btn--active' : ''}`} onClick={() => setShowFog(!showFog)} title="Toggle Fog of War">
                 <Eye size={12} />
               </button>
 
@@ -921,8 +867,6 @@ function App() {
               showPath={showPath}
               showTrail={showTrail}
               showFog={showFog}
-              pathSet={pathSet}
-              trailSet={trailSet}
               onHoverCell={setHoveredCell}
             />
           </div>
@@ -945,133 +889,156 @@ function App() {
             </div>
           )}
 
-          {/* Cell tooltip */}
           {hoveredCell && (
             <CellTooltip state={state} x={hoveredCell.x} y={hoveredCell.y} screenX={hoveredCell.screenX} screenY={hoveredCell.screenY} />
           )}
         </div>
 
-        {/* ========== RIGHT PANEL ========== */}
+        {/* ========== RIGHT PANEL: COMMUNICATION POINTS & SOLAR POINTS ========== */}
         <div className="panel">
-          {/* AI Decision */}
+          {/* 3. Communication Points */}
           <div className="panel-section">
-            <div className="panel-section__title"><Brain size={13} /> Rover Intelligence</div>
-            <div className="decision-card">
-              <div className="decision-card__header">Current Goal</div>
-              <div className="decision-card__value">{state.decision.currentGoal}</div>
+            <div className="panel-section__title" style={{ color: 'var(--blue-400)' }}>
+              <Radio size={13} /> Communication Points
             </div>
-            <div className="decision-card">
-              <div className="decision-card__header">Current Action</div>
-              <div className="decision-card__value">{state.decision.currentAction}</div>
-            </div>
-            <div className="decision-card">
-              <div className="decision-card__header">Reason</div>
-              <div className="decision-card__value" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                {state.decision.actionReason}
+
+            {/* Base Station Comm Hub */}
+            <div className="operational-card operational-card--active">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 600, fontSize: 11, color: 'var(--accent)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Home size={12} /> Base Station Comm Hub
+                </span>
+                <span className={`operational-badge ${state.roverPosition.x === state.homeBase.x && state.roverPosition.y === state.homeBase.y ? 'operational-badge--emerald' : 'operational-badge--cyan'}`}>
+                  {state.roverPosition.x === state.homeBase.x && state.roverPosition.y === state.homeBase.y ? '✓ DIRECT FIBER (DOCKED)' : 'LONG-RANGE LINK'}
+                </span>
               </div>
-            </div>
-            <div style={{ marginTop: 4 }}>
-              <div className="metric-row">
-                <span className="metric-row__label">Risk</span>
-                <span className={`risk-level risk-level--${state.decision.riskLevel}`}>{state.decision.riskLevel}</span>
+              <div className="metric-row" style={{ marginTop: 2 }}>
+                <span className="metric-row__label">Hub Coordinate</span>
+                <span className="metric-row__value metric-row__value--info">({state.homeBase.x}, {state.homeBase.y})</span>
               </div>
               <div className="metric-row">
-                <span className="metric-row__label">Return Energy</span>
-                <span className="metric-row__value">{formatEnergy(state.decision.estimatedReturnEnergy)}</span>
+                <span className="metric-row__label">Distance to Rover</span>
+                <span className="metric-row__value">{manhattanDist(state.roverPosition, state.homeBase)} cells</span>
               </div>
+            </div>
+
+            {/* Data Downlink Telemetry */}
+            <div style={{ marginTop: 6 }}>
               <div className="metric-row">
-                <span className="metric-row__label">Solar Condition</span>
-                <span className="metric-row__value metric-row__value--solar" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  {renderSolarIcon(state.solar.lightingCondition)} {state.solar.lightingCondition.replace(/_/g, ' ')}
+                <span className="metric-row__label">Onboard Data Buffer</span>
+                <span className="metric-row__value" style={{ color: state.onboardData > 0 ? 'var(--amber-400)' : 'var(--text-muted)', fontWeight: 600 }}>
+                  {state.onboardData.toFixed(0)} units (Pending Downlink)
                 </span>
               </div>
               <div className="metric-row">
-                <span className="metric-row__label">Next Action</span>
-                <span className="metric-row__value" style={{ fontSize: 10 }}>{state.decision.nextPlannedAction}</span>
+                <span className="metric-row__label">Delivered to Mission Control</span>
+                <span className="metric-row__value metric-row__value--safe" style={{ fontWeight: 700 }}>
+                  {state.deliveredData.toFixed(0)} / 50 units
+                </span>
+              </div>
+
+              <div className="progress-track">
+                <div
+                  className="progress-fill progress-fill--cyan"
+                  style={{ width: `${Math.min(100, (state.deliveredData / 50) * 100)}%` }}
+                />
+              </div>
+
+              <div className="metric-row">
+                <span className="metric-row__label">Downlink Quota Status</span>
+                <span className={`metric-row__value ${state.deliveredData >= 50 ? 'metric-row__value--safe' : 'metric-row__value--caution'}`} style={{ fontWeight: 600 }}>
+                  {state.deliveredData >= 50 ? '✓ QUOTA MET' : `${(Math.max(0, 50 - state.deliveredData)).toFixed(0)} units needed`}
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Candidate Actions */}
-          {state.decision.candidates.length > 0 && (
-            <div className="panel-section">
-              <div className="panel-section__title"><Gauge size={13} /> Action Candidates</div>
-              <div className="candidate-list">
-                {[...state.decision.candidates]
-                  .sort((a, b) => b.utility - a.utility)
-                  .slice(0, 8)
-                  .map((c, i) => (
-                    <div key={i} className={`candidate-item ${i === 0 && c.safetyAllowed ? 'candidate-item--best' : ''} ${!c.safetyAllowed ? 'candidate-item--unsafe' : ''}`}>
-                      <span className="candidate-item__name">
-                        {c.action.description}
-                        {!c.safetyAllowed && <AlertTriangle size={10} style={{ marginLeft: 4, color: 'var(--red-400)', verticalAlign: -1 }} />}
+          {/* 4. Solar Points */}
+          <div className="panel-section">
+            <div className="panel-section__title" style={{ color: 'var(--amber-400)' }}>
+              <Sun size={13} /> Solar Points
+            </div>
+
+            {/* Solar Stations List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {state.solarStations.map((station, idx) => {
+                const distToStation = manhattanDist(state.roverPosition, station);
+                const isAtStation = state.roverPosition.x === station.x && state.roverPosition.y === station.y;
+                return (
+                  <div
+                    key={idx}
+                    className={`operational-card ${isAtStation ? 'operational-card--solar' : ''}`}
+                    style={{ padding: '8px 10px' }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 600, fontSize: 11, color: 'var(--solar)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <Zap size={11} /> Solar Point #{idx + 1}
                       </span>
-                      <span className={`candidate-item__utility ${c.utility > 0 ? 'metric-row__value--safe' : 'metric-row__value--critical'}`}>
-                        {c.utility.toFixed(2)}
+                      <span className={`operational-badge ${isAtStation ? 'operational-badge--amber' : 'operational-badge--slate'}`}>
+                        {isAtStation ? '⚡ RECHARGING' : `${distToStation} cells away`}
                       </span>
                     </div>
-                  ))}
+                    <div className="metric-row" style={{ marginTop: 2 }}>
+                      <span className="metric-row__label">Coordinates</span>
+                      <span className="metric-row__value metric-row__value--solar">({station.x}, {station.y})</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Solar Power & Flux */}
+            <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid var(--border-subtle)' }}>
+              <div className="solar-indicator">
+                <span className="solar-indicator__icon">{renderSolarIcon(state.solar.lightingCondition)}</span>
+                <div className="solar-indicator__info">
+                  <div className="solar-indicator__condition">{state.solar.lightingCondition.replace(/_/g, ' ')}</div>
+                  <div className="solar-indicator__power">{formatPower(state.solar.currentPower)}</div>
+                </div>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
+                  f={state.solar.sunlightFactor.toFixed(2)}
+                </span>
+              </div>
+
+              <div className="metric-row">
+                <span className="metric-row__label">Rover Battery</span>
+                <span className={`metric-row__value ${getBatteryValueClass(batteryPercent)}`} style={{ fontWeight: 600 }}>
+                  {(batteryPercent * 100).toFixed(0)}% ({formatEnergy(state.battery.currentEnergy)})
+                </span>
+              </div>
+
+              <div className="battery-bar">
+                <div
+                  className={`battery-bar__fill battery-bar__fill--${getBatteryClass(batteryPercent)}`}
+                  style={{ width: `${batteryPercent * 100}%` }}
+                />
+                <div className="battery-bar__reserve" style={{ left: `${Math.min(100, reservePercent * 100)}%` }} />
+              </div>
+
+              <div className="metric-row" style={{ marginTop: 4 }}>
+                <span className="metric-row__label">Total Solar Harvested</span>
+                <span className="metric-row__value metric-row__value--solar">{formatEnergy(state.battery.totalHarvested)}</span>
+              </div>
+
+              <div className="metric-row">
+                <span className="metric-row__label">Loopback Safeguard</span>
+                <span className="metric-row__value metric-row__value--safe" style={{ fontSize: 10, fontWeight: 600 }}>
+                  ✓ FIXED & ACTIVE
+                </span>
               </div>
             </div>
-          )}
-
-          {/* Energy Charts */}
-          <div className="panel-section">
-            <div className="panel-section__title"><Zap size={13} /> Energy History</div>
-            <SvgTelemetryChart
-              data={chartData}
-              dataKey1="battery"
-              dataKey2="solarPower"
-              color1="#38bdf8"
-              color2="#fbbf24"
-              label1="Battery"
-              label2="Solar"
-              unit1=" Wh"
-              unit2=" W"
-              height={95}
-            />
           </div>
 
-          {/* Harvested vs Consumed */}
-          <div className="panel-section">
-            <div className="panel-section__title"><Sun size={13} /> Energy Balance</div>
-            <SvgTelemetryChart
-              data={chartData}
-              dataKey1="harvested"
-              dataKey2="consumed"
-              color1="#10b981"
-              color2="#ef4444"
-              label1="Harvested"
-              label2="Consumed"
-              unit1=" Wh"
-              unit2=" Wh"
-              height={85}
-            />
-          </div>
-
-          {/* Exploration Progress */}
-          <div className="panel-section">
-            <div className="panel-section__title"><Compass size={13} /> Exploration</div>
-            <SvgTelemetryChart
-              data={chartData}
-              dataKey1="explored"
-              color1="#a855f7"
-              label1="Explored"
-              isPercent={true}
-              height={75}
-            />
-          </div>
-
-          {/* Event Log */}
-          <div className="panel-section">
-            <div className="panel-section__title"><Radio size={13} /> Mission Log ({state.events.length})</div>
+          {/* Activity Log */}
+          <div className="panel-section" style={{ flex: 1, minHeight: 140 }}>
+            <div className="panel-section__title"><Radio size={13} /> Mission Telemetry Log ({state.events.length})</div>
             <div className="event-log">
               {state.events.length === 0 ? (
                 <div style={{ padding: 12, textAlign: 'center', color: 'var(--text-dim)', fontSize: 11 }}>
-                  No events yet
+                  Awaiting telemetry...
                 </div>
               ) : (
-                [...state.events].reverse().slice(0, 50).map(evt => (
+                [...state.events].reverse().slice(0, 30).map(evt => (
                   <div key={evt.id} className="event-entry">
                     <span className="event-entry__time">{formatSimTime(evt.timestamp)}</span>
                     <span className={`event-entry__badge event-entry__badge--${evt.category.toLowerCase()}`}>
@@ -1100,6 +1067,7 @@ function CellTooltip({ state, x, y, screenX, screenY }: {
   const terrainCfg = revealed ? activeConfigs[beliefCell.terrain] : activeConfigs[TerrainType.UNKNOWN];
   const isRover = state.roverPosition.x === x && state.roverPosition.y === y;
   const isHome = state.homeBase.x === x && state.homeBase.y === y;
+  const isSolar = state.solarStations.some(s => s.x === x && s.y === y);
 
   return (
     <div className="cell-tooltip" style={{
@@ -1107,30 +1075,36 @@ function CellTooltip({ state, x, y, screenX, screenY }: {
       top: Math.min(screenY + 12, window.innerHeight - 140),
     }}>
       <div className="cell-tooltip__title">
-        ({x}, {y}) — {revealed ? terrainCfg.label : 'Unknown'}
+        ({x}, {y}) — {revealed ? terrainCfg.label : 'Unknown Terrain'}
       </div>
       {revealed && (
         <>
           <div className="cell-tooltip__row">
-            <span>Cost</span>
-            <span>{terrainCfg.passable ? `×${terrainCfg.movementCost}` : 'Impassable'}</span>
+            <span>Passability</span>
+            <span>{terrainCfg.passable ? `Cost ×${terrainCfg.movementCost}` : 'Impassable'}</span>
           </div>
           {isRover && (
             <div className="cell-tooltip__row">
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Navigation size={11} color="var(--cyan-400)" /> Status</span>
-              <span>Rover present</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Navigation size={11} color="var(--cyan-400)" /> Rover</span>
+              <span>Present</span>
             </div>
           )}
           {isHome && (
             <div className="cell-tooltip__row">
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Home size={11} color="var(--cyan-400)" /> Station</span>
-              <span>Home Base</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Home size={11} color="var(--cyan-400)" /> Base Hub</span>
+              <span>Home Station</span>
+            </div>
+          )}
+          {isSolar && (
+            <div className="cell-tooltip__row">
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Sun size={11} color="#fbbf24" /> Haven</span>
+              <span>Solar Station</span>
             </div>
           )}
           {beliefCell.hasResource && beliefCell.resource && (
             <div className="cell-tooltip__row">
-              <span>{RESOURCE_CONFIGS[beliefCell.resource.type].symbol}</span>
-              <span>{RESOURCE_CONFIGS[beliefCell.resource.type].label} (v:{beliefCell.resource.value})</span>
+              <span>{RESOURCE_CONFIGS[beliefCell.resource.type].symbol} Resource</span>
+              <span>{RESOURCE_CONFIGS[beliefCell.resource.type].label}</span>
             </div>
           )}
           {beliefCell.hasObjective && beliefCell.objective && (

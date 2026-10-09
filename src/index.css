@@ -5,18 +5,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-  --bg-wash: #0a0e17;
-  --bg-wash-deep: #06090f;
+  --bg-wash: #0b0f19;
+  --bg-wash-deep: #070a12;
   --bg-primary: #0f172a;
-  --bg-secondary: rgba(15, 23, 42, 0.82);
-  --bg-tertiary: rgba(30, 41, 59, 0.88);
+  --bg-secondary: rgba(15, 23, 42, 0.94);
+  --bg-tertiary: rgba(21, 30, 46, 0.94);
   --bg-elevated: rgba(30, 41, 59, 0.96);
-  --bg-hover: rgba(51, 65, 85, 0.92);
+  --bg-hover: rgba(51, 65, 85, 0.96);
 
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border-default: rgba(255, 255, 255, 0.14);
-  --border-strong: rgba(255, 255, 255, 0.22);
-  --glass-edge: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(56, 189, 248, 0.35);
+  --glass-edge: rgba(255, 255, 255, 0.1);
 
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
@@ -44,10 +44,10 @@
   --telemetry: #38bdf8;
   --accent: #38bdf8;
 
-  --radius-sm: 10px;
-  --radius-md: 16px;
-  --radius-lg: 22px;
-  --radius-xl: 28px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 26px;
 
   --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
@@ -58,8 +58,8 @@
   --gap-lg: 16px;
   --gap-xl: 24px;
 
-  --shadow-float: 0 16px 40px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
-  --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-float: 0 16px 40px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4);
+  --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
 *, *::before, *::after {
@@ -80,10 +80,9 @@ body {
   font-size: 13px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  background-color: #0b0f19;
   background:
-    radial-gradient(ellipse at 18% 12%, #1e293b 0%, transparent 46%),
-    radial-gradient(ellipse at 82% 18%, #141e2e 0%, transparent 42%),
-    radial-gradient(ellipse at 50% 100%, #090d14 0%, #0d121c 55%, #080c12 100%);
+    radial-gradient(ellipse at 25% 15%, #1e293b 0%, #111827 50%, #0b0f19 100%);
 }
 
 /* ===================== LAYOUT ===================== */
@@ -193,7 +192,7 @@ body {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 268px;
+  width: 295px;
   z-index: 6;
   background: transparent;
   border: none;
@@ -217,7 +216,7 @@ body {
 .panel:last-child {
   right: 0;
   left: auto;
-  width: 292px;
+  width: 315px;
 }
 
 .panel-section {
@@ -393,7 +392,7 @@ body {
   box-shadow: var(--shadow-soft);
   backdrop-filter: blur(24px) saturate(1.15);
   flex-shrink: 0;
-  width: min(920px, calc(100% - 540px));
+  width: min(920px, calc(100% - 650px));
   min-width: 320px;
   margin-bottom: 10px;
   gap: 8px;
@@ -467,8 +466,8 @@ body {
   overflow: hidden;
   cursor: grab;
   background:
-    radial-gradient(circle at 50% 42%, #1e293b 0%, #0f172a 65%, #080c14 100%);
-  border: 8px solid rgba(255, 255, 255, 0.08);
+    radial-gradient(circle at 50% 45%, #0f172a 0%, #080d19 65%, #03060c 100%);
+  border: 4px solid rgba(255, 255, 255, 0.08);
   box-shadow:
     var(--shadow-float),
     inset 0 0 0 1px rgba(255, 255, 255, 0.05),
@@ -494,8 +493,8 @@ body {
   top: 0;
   left: 0;
   display: grid;
-  gap: 1px;
-  background: rgba(255, 255, 255, 0.06);
+  gap: 0;
+  background: rgba(255, 255, 255, 0.04);
   will-change: transform;
 }
 
@@ -506,7 +505,7 @@ body {
 
 .map-grid {
   display: grid;
-  gap: 1px;
+  gap: 0;
 }
 
 .map-cell {
@@ -520,25 +519,28 @@ body {
   position: relative;
   cursor: pointer;
   user-select: none;
+  box-sizing: border-box;
+  border-right: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
 }
 
 .map-cell:hover {
   outline: 1.5px solid var(--accent);
   outline-offset: -1px;
-  z-index: 2;
+  z-index: 10;
 }
 
 .map-cell--unknown {
-  background: #1e293b !important;
+  background: #111827 !important;
   color: #475569;
 }
 
 .map-cell--trail {
-  box-shadow: inset 0 0 0 1.5px rgba(56, 189, 248, 0.6);
+  box-shadow: inset 0 0 0 1.5px rgba(56, 189, 248, 0.35);
 }
 
 .map-cell--path {
-  box-shadow: inset 0 0 0 1.5px rgba(251, 191, 36, 0.85);
+  box-shadow: inset 0 0 0 1.5px rgba(251, 191, 36, 0.45);
 }
 
 .map-cell--boulder {
@@ -550,7 +552,134 @@ body {
   box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.95), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
-/* ===================== ROVER VEHICLE FLOW ===================== */
+/* ===================== SVG TRAJECTORY LAYER ===================== */
+
+.map-trajectory-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.trajectory-animated-path {
+  animation: trajectoryDash 1.2s linear infinite;
+}
+
+@keyframes trajectoryDash {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+/* ===================== FIXED HOME BASE & SOLAR MARKERS ===================== */
+
+.home-base-marker {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 18;
+}
+
+.home-base-beacon {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(56, 189, 248, 0.8);
+  background: rgba(56, 189, 248, 0.2);
+  animation: beaconPulse 2.4s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+@keyframes beaconPulse {
+  0% { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+
+.home-base-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #0369a1;
+  border: 1.5px solid #38bdf8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.9);
+  z-index: 2;
+}
+
+.home-base-label {
+  position: absolute;
+  top: 19px;
+  font-size: 8px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: #38bdf8;
+  background: rgba(3, 105, 161, 0.85);
+  border: 1px solid rgba(56, 189, 248, 0.6);
+  padding: 0 3px;
+  border-radius: 4px;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  z-index: 3;
+}
+
+.solar-station-marker {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 17;
+}
+
+.solar-station-beacon {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(251, 191, 36, 0.8);
+  background: rgba(251, 191, 36, 0.2);
+  animation: beaconPulse 2.8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+.solar-station-icon {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #b45309;
+  border: 1.5px solid #fbbf24;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.9);
+  z-index: 2;
+}
+
+.solar-station-label {
+  position: absolute;
+  top: 18px;
+  font-size: 7px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #fbbf24;
+  background: rgba(180, 83, 9, 0.85);
+  border: 1px solid rgba(251, 191, 36, 0.6);
+  padding: 0 3px;
+  border-radius: 4px;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  z-index: 3;
+}
+
+/* ===================== ROVER VEHICLE ===================== */
 
 .rover-vehicle {
   position: absolute;
@@ -573,6 +702,24 @@ body {
   background: rgba(56, 189, 248, 0.16);
   animation: roverRadarRing 2s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
   pointer-events: none;
+}
+
+.rover-charging-ring {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px dashed #fbbf24;
+  background: rgba(251, 191, 36, 0.25);
+  animation: chargingSpin 2s linear infinite;
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.8);
+  pointer-events: none;
+}
+
+@keyframes chargingSpin {
+  0% { transform: rotate(0deg) scale(0.9); }
+  50% { transform: rotate(180deg) scale(1.1); }
+  100% { transform: rotate(360deg) scale(0.9); }
 }
 
 @keyframes roverRadarRing {
@@ -1194,4 +1341,102 @@ body {
   .map-toolbar {
     width: 100%;
   }
+}
+
+/* ===================== 4 CORE OPERATIONAL PANELS ===================== */
+
+.operational-card {
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.operational-card:hover {
+  border-color: rgba(56, 189, 248, 0.35);
+  background: var(--bg-elevated);
+}
+
+.operational-card--active {
+  border-color: var(--cyan-400);
+  background: rgba(14, 165, 233, 0.08);
+}
+
+.operational-card--collected {
+  border-color: rgba(52, 211, 153, 0.4);
+  background: rgba(16, 185, 129, 0.06);
+}
+
+.operational-card--solar {
+  border-color: rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.06);
+}
+
+.operational-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.operational-badge--emerald {
+  background: rgba(16, 185, 129, 0.18);
+  color: var(--green-400);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.operational-badge--cyan {
+  background: rgba(56, 189, 248, 0.18);
+  color: var(--cyan-400);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+}
+
+.operational-badge--amber {
+  background: rgba(245, 158, 11, 0.18);
+  color: var(--amber-400);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.operational-badge--slate {
+  background: rgba(100, 116, 139, 0.18);
+  color: var(--text-muted);
+  border: 1px solid rgba(100, 116, 139, 0.3);
+}
+
+.progress-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 6px 0;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.progress-fill--emerald {
+  background: linear-gradient(90deg, #10b981, #34d399);
+}
+
+.progress-fill--cyan {
+  background: linear-gradient(90deg, #0284c7, #38bdf8);
+}
+
+.progress-fill--amber {
+  background: linear-gradient(90deg, #d97706, #fbbf24);
 }

@@ -71,6 +71,7 @@ export interface EnvironmentProperties {
   // Terrain generation & visual styling
   terrainDistribution: TerrainDistribution;
   terrainConfigs?: Partial<Record<TerrainType, Partial<TerrainConfig>>>;
+  solarChargingStations?: Position[];
 
   // Simulation timing
   timePerTick?: number;         // seconds
@@ -85,6 +86,7 @@ export interface GeneratedEnvironment {
   objectives: ScientificObjective[];
   homeBase: Position;
   roverStart: Position;
+  solarStations: Position[];
   terrainConfigs: Record<TerrainType, TerrainConfig>;
   properties: EnvironmentProperties;
 }

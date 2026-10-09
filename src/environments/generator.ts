@@ -85,6 +85,9 @@ export function generateEnvironment(
   // 3. Rover starts at home base
   const roverStart: Position = { x: homeBase.x, y: homeBase.y };
 
+  // 4. Place solar charging stations in the map to support safe recharging loops.
+  const solarStations = placeSolarChargingStations(groundTruth, W, H, homeBase, roverStart, rng, properties.solarChargingStations);
+
   // 4. Place Scientific Objective (far from home base)
   const objX = rng.nextInt(Math.max(0, W - 8), W - 3);
   const objY = rng.nextInt(2, Math.min(H - 3, 7));
@@ -197,6 +200,7 @@ export function generateEnvironment(
     objectives: [objective],
     homeBase,
     roverStart,
+    solarStations,
     terrainConfigs,
     properties,
   };
@@ -242,6 +246,51 @@ function sampleTerrain(
 
 function isPassable(terrain: TerrainType): boolean {
   return terrain !== TerrainType.BOULDER && terrain !== TerrainType.CRATER;
+}
+
+function placeSolarChargingStations(
+  grid: GridCell[][],
+  width: number,
+  height: number,
+  homeBase: Position,
+  roverStart: Position,
+  rng: SeededRandom,
+  predefined?: Position[]
+): Position[] {
+  const stations: Position[] = [];
+  const occupied = new Set<string>([posKey(homeBase.x, homeBase.y), posKey(roverStart.x, roverStart.y)]);
+
+  if (predefined && predefined.length > 0) {
+    for (const p of predefined) {
+      if (p.x < 0 || p.x >= width || p.y < 0 || p.y >= height) continue;
+      const key = posKey(p.x, p.y);
+      if (occupied.has(key)) continue;
+      occupied.add(key);
+      stations.push({ x: p.x, y: p.y });
+      grid[p.y][p.x].isSolarChargingPoint = true;
+      grid[p.y][p.x].terrain = TerrainType.FLAT_ROCK;
+    }
+  }
+
+  const targetStations = Math.max(1, Math.min(3, Math.floor((width * height) / 200)));
+  while (stations.length < targetStations) {
+    const candidate = {
+      x: rng.nextInt(2, width - 2),
+      y: rng.nextInt(2, height - 2),
+    };
+    const key = posKey(candidate.x, candidate.y);
+    if (occupied.has(key)) continue;
+    if (Math.abs(candidate.x - homeBase.x) + Math.abs(candidate.y - homeBase.y) < 6) continue;
+    const terrain = grid[candidate.y][candidate.x].terrain;
+    if (!isPassable(terrain)) continue;
+
+    occupied.add(key);
+    stations.push(candidate);
+    grid[candidate.y][candidate.x].isSolarChargingPoint = true;
+    grid[candidate.y][candidate.x].terrain = TerrainType.FLAT_ROCK;
+  }
+
+  return stations;
 }
 
 /** BFS connectivity guarantee from src to dst */
