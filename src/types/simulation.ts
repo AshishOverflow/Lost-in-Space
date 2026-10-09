@@ -25,15 +25,15 @@ export interface TerrainConfig {
 }
 
 export const TERRAIN_CONFIGS: Record<TerrainType, TerrainConfig> = {
-  [TerrainType.FLAT_ROCK]:  { type: TerrainType.FLAT_ROCK,  passable: true,  movementCost: 1.0, label: 'Flat Rock',   color: '#e6d5c3', symbol: '·' },
-  [TerrainType.GRAVEL]:     { type: TerrainType.GRAVEL,     passable: true,  movementCost: 1.3, label: 'Gravel Bed',  color: '#c9a98a', symbol: '∴' },
-  [TerrainType.SAND]:       { type: TerrainType.SAND,       passable: true,  movementCost: 1.8, label: 'Sand Dunes',  color: '#d4a574', symbol: '≈' },
-  [TerrainType.ROCKY]:      { type: TerrainType.ROCKY,      passable: true,  movementCost: 2.2, label: 'Rough Rock',  color: '#b07a62', symbol: '▲' },
-  [TerrainType.STEEP]:      { type: TerrainType.STEEP,      passable: true,  movementCost: 3.0, label: 'Steep Slope', color: '#9a6b58', symbol: '⛰' },
-  [TerrainType.BOULDER]:    { type: TerrainType.BOULDER,    passable: false, movementCost: Infinity, label: 'Boulder Barrier', color: '#6f5848', symbol: '■' },
-  [TerrainType.CRATER]:     { type: TerrainType.CRATER,     passable: false, movementCost: Infinity, label: 'Impact Crater',   color: '#8a7060', symbol: '◯' },
-  [TerrainType.UNKNOWN]:    { type: TerrainType.UNKNOWN,    passable: true,  movementCost: 2.0, label: 'Unknown Fog', color: '#d9cfc4', symbol: '?' },
-  [TerrainType.HOME_BASE]:  { type: TerrainType.HOME_BASE,  passable: true,  movementCost: 1.0, label: 'Home Base',   color: '#c4a484', symbol: '⌂' },
+  [TerrainType.FLAT_ROCK]:  { type: TerrainType.FLAT_ROCK,  passable: true,  movementCost: 1.0, label: 'Flat Rock',        color: '#334155', symbol: '·' },
+  [TerrainType.GRAVEL]:     { type: TerrainType.GRAVEL,     passable: true,  movementCost: 1.3, label: 'Gravel Bed',       color: '#10b981', symbol: '∴' },
+  [TerrainType.SAND]:       { type: TerrainType.SAND,       passable: true,  movementCost: 1.8, label: 'Sand Dunes',       color: '#f59e0b', symbol: '≈' },
+  [TerrainType.ROCKY]:      { type: TerrainType.ROCKY,      passable: true,  movementCost: 2.2, label: 'Rough Rock',       color: '#ef4444', symbol: '▲' },
+  [TerrainType.STEEP]:      { type: TerrainType.STEEP,      passable: true,  movementCost: 3.0, label: 'Steep Slope',      color: '#a855f7', symbol: '⋀' },
+  [TerrainType.BOULDER]:    { type: TerrainType.BOULDER,    passable: false, movementCost: Infinity, label: 'Boulder Barrier', color: '#18181b', symbol: '■' },
+  [TerrainType.CRATER]:     { type: TerrainType.CRATER,     passable: false, movementCost: Infinity, label: 'Impact Crater',    color: '#020617', symbol: '◎' },
+  [TerrainType.UNKNOWN]:    { type: TerrainType.UNKNOWN,    passable: true,  movementCost: 2.0, label: 'Unknown Fog',      color: '#1e293b', symbol: '?' },
+  [TerrainType.HOME_BASE]:  { type: TerrainType.HOME_BASE,  passable: true,  movementCost: 1.0, label: 'Home Base',        color: '#0284c7', symbol: '⌂' },
 };
 
 // --- Grid ---
