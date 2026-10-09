@@ -336,8 +336,8 @@ export const DEFAULT_CONFIG: SimulationConfig = {
   sensorRadius: 4,
   safetyReserve: 8,         // Wh
   uncertaintyBuffer: 1.3,   // 30% extra for unknown terrain
-  batteryCapacity: 100,     // Wh
-  initialBattery: 90,       // Wh
+  batteryCapacity: 120,     // Wh
+  initialBattery: 110,      // Wh
   ratedSolarPower: 30,      // Watts
   panelEfficiency: 0.85,
   resourceCount: 12,

@@ -656,7 +656,7 @@ function App() {
             <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid var(--border-subtle)' }}>
               <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>Completion Criteria:</div>
               <div style={{ fontSize: 10, color: state.objectives.every(o => o.scanned) ? 'var(--green-400)' : 'var(--text-secondary)' }}>
-                {state.objectives.every(o => o.scanned) ? '✅' : '⬜'} Scan all objectives
+                {state.objectives.every(o => o.scanned) ? '✅' : '⬜'} Scan all objectives ({state.objectives.filter(o => o.scanned).length}/{state.objectives.length})
               </div>
               <div style={{ fontSize: 10, color: state.collectedResources.length >= 3 ? 'var(--green-400)' : 'var(--text-secondary)' }}>
                 {state.collectedResources.length >= 3 ? '✅' : '⬜'} Collect 3+ resources ({state.collectedResources.length}/3)
@@ -665,7 +665,7 @@ function App() {
                 {state.deliveredData >= 50 ? '✅' : '⬜'} Deliver 50+ data units ({state.deliveredData.toFixed(0)}/50)
               </div>
               <div style={{ fontSize: 10, color: state.missionComplete ? 'var(--green-400)' : 'var(--text-secondary)' }}>
-                {state.missionComplete ? '✅' : '⬜'} Return to base
+                {state.missionComplete ? '✅' : '⬜'} Return to base {state.missionComplete ? '(Recovered)' : ''}
               </div>
             </div>
           </div>
@@ -816,6 +816,28 @@ function App() {
             </div>
           </div>
 
+          {state.missionComplete && (
+            <div style={{
+              background: 'linear-gradient(90deg, rgba(16, 185, 129, 0.25), rgba(6, 182, 212, 0.25))',
+              border: '1px solid var(--green-400)',
+              borderRadius: 6,
+              padding: '10px 16px',
+              margin: '0 12px 10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              color: 'var(--green-400)',
+              fontWeight: 600,
+              fontSize: 12,
+              boxShadow: '0 0 15px rgba(16, 185, 129, 0.25)'
+            }}>
+              <span>🏆 MISSION ACCOMPLISHED — All objectives scanned, resources collected, and rover recovered at Home Base!</span>
+              <span style={{ fontSize: 11, color: 'var(--cyan-400)', fontFamily: 'var(--font-mono)' }}>
+                Data Delivered: {state.deliveredData.toFixed(0)} units
+              </span>
+            </div>
+          )}
+
           <div className="map-stage">
             <CircularMap
               state={state}
@@ -826,6 +848,7 @@ function App() {
               trailSet={trailSet}
               onHoverCell={setHoveredCell}
             />
+          </div>
           </div>
 
           {/* Manual controls overlay */}

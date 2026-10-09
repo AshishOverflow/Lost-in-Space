@@ -149,11 +149,16 @@ export function simulationTick(state: SimulationState): SimulationState {
     history: [...state.history],
     roverTrail: [...state.roverTrail],
     roverPath: [...state.roverPath],
-    collectedResources: [...state.collectedResources],
+    collectedResources: state.collectedResources.map(r => ({ ...r })),
+    resources: state.resources.map(r => ({ ...r })),
+    objectives: state.objectives.map(o => ({ ...o })),
     decision: {
       ...state.decision,
       candidates: [...state.decision.candidates],
     },
+    metrics: { ...state.metrics },
+    battery: { ...state.battery },
+    solar: { ...state.solar },
   };
   s.tickCount++;
 
@@ -176,8 +181,35 @@ export function simulationTick(state: SimulationState): SimulationState {
     s.battery.totalHarvested += actualHarvested;
   }
 
-  // 4. Deduct idle energy
-  s.battery = consumeEnergy(s.battery, s.energyCosts.idle);
+  // 3b. Base Station Hub power recharge & data downlink
+  if (posEqual(s.roverPosition, s.homeBase)) {
+    const chargeNeeded = s.battery.capacity - s.battery.currentEnergy;
+    const baseRecharge = Math.min(chargeNeeded, 25);
+    if (baseRecharge > 0) {
+      s.battery.currentEnergy += baseRecharge;
+      s.battery.totalHarvested += baseRecharge;
+    }
+    // Auto-offload data at base
+    if (s.onboardData > 0) {
+      const delivered = s.onboardData;
+      s.deliveredData += delivered;
+      s.metrics.scientificDataDelivered += delivered;
+      s.onboardData = 0;
+      addEvent(s, EventCategory.SCIENCE, `Base station downlink: Delivered ${delivered.toFixed(0)} scientific data units to mission control`);
+    }
+    // Reset from conserving/returning mode once charged sufficiently
+    if (s.battery.currentEnergy >= s.battery.capacity * 0.85 && !s.missionComplete && !s.missionFailed) {
+      if (s.roverMode === RoverMode.IDLE || s.roverMode === RoverMode.CONSERVING || s.roverMode === RoverMode.RETURNING_TO_HUB) {
+        s.roverMode = RoverMode.EXPLORING;
+        addEvent(s, EventCategory.ENERGY, 'Battery recharged to 85%+. Resuming mission exploration.');
+      }
+    }
+  }
+
+  // 4. Deduct idle energy (if not docked at base)
+  if (!posEqual(s.roverPosition, s.homeBase)) {
+    s.battery = consumeEnergy(s.battery, s.energyCosts.idle);
+  }
 
   // 5. Estimate return energy
   const returnEnergy = estimateReturnEnergy(
@@ -187,14 +219,20 @@ export function simulationTick(state: SimulationState): SimulationState {
   s.decision = { ...s.decision, estimatedReturnEnergy: returnEnergy };
   s.metrics = { ...s.metrics, returnRouteEnergy: returnEnergy };
 
-  // 6. Execute autonomous action
+  // 6. Update goal and target path before autonomous evaluation
+  updateDecisionGoal(s);
+
+  // 7. Execute autonomous action
   if (s.isAutonomous && !s.missionComplete && !s.missionFailed) {
     executeAutonomousAction(s);
   }
 
-  // 7. Update metrics
+  // 8. Update metrics and record history
   updateMetrics(s);
   recordHistory(s);
+
+  // 9. Check mission completion
+  checkMissionCompletion(s);
 
   return s;
 }
@@ -216,6 +254,12 @@ function executeAutonomousAction(s: SimulationState) {
 
   if (safetyResult.forcedAction) {
     executeAction(s, safetyResult.forcedAction);
+    s.decision = {
+      ...s.decision,
+      currentAction: safetyResult.forcedAction.description,
+      actionReason: safetyResult.interventionReason || 'Forced safety action',
+      riskLevel: 'CRITICAL',
+    };
     return;
   }
 
@@ -248,13 +292,46 @@ function executeAutonomousAction(s: SimulationState) {
 // Candidate action evaluation — Utility planner
 // ============================================================
 
+function calculateSafeReturnEnergy(s: SimulationState): number {
+  const returnEnergy = s.decision.estimatedReturnEnergy;
+  if (returnEnergy <= 0 || posEqual(s.roverPosition, s.homeBase)) {
+    return s.safetyReserve;
+  }
+  const dist = manhattanDist(s.roverPosition, s.homeBase);
+  const durationSeconds = dist * s.timePerTick;
+  const predictedSolar = predictSolarGeneration(s.solar, s.metrics.elapsedTime, durationSeconds, s.timePerTick);
+  const solarCredit = Math.min(predictedSolar * 0.5, returnEnergy * 0.5);
+  return Math.max(s.safetyReserve, returnEnergy + s.safetyReserve - solarCredit);
+}
+
 function evaluateCandidates(s: SimulationState): ActionCandidate[] {
   const candidates: ActionCandidate[] = [];
-  const returnEnergy = s.decision.estimatedReturnEnergy;
-  const safeEnergy = returnEnergy + s.safetyReserve + (returnEnergy * (s.uncertaintyBuffer - 1));
+  const safeEnergy = calculateSafeReturnEnergy(s);
+  const isAtBase = posEqual(s.roverPosition, s.homeBase);
+
+  // 0. Base Station Hub Rapid Recharging (Top priority if at base with depleted battery)
+  if (isAtBase && s.battery.currentEnergy < s.battery.capacity * 0.85) {
+    candidates.push({
+      action: { type: ActionType.WAIT, energyCost: 0, description: 'Recharge at Base Station' },
+      utility: 3.6,
+      reward: 0.5,
+      informationGain: 0,
+      missionProgress: 0.3,
+      energyCost: 0,
+      timeCost: 1,
+      risk: 0,
+      explanation: `Base Hub fast recharge active (${((s.battery.currentEnergy / s.battery.capacity) * 100).toFixed(0)}% / 85% ready)`,
+      safetyAllowed: true,
+    });
+  }
 
   // 1. Movement in four directions
   for (const dir of [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST]) {
+    // When docked at base, do not depart until battery is at least 80% charged
+    if (isAtBase && s.battery.currentEnergy < s.battery.capacity * 0.80) {
+      continue;
+    }
+
     const vec = DIRECTION_VECTORS[dir];
     const nx = s.roverPosition.x + vec.x;
     const ny = s.roverPosition.y + vec.y;
@@ -275,12 +352,26 @@ function evaluateCandidates(s: SimulationState): ActionCandidate[] {
     const distToHome = manhattanDist({ x: nx, y: ny }, s.homeBase);
     const currentDistToHome = manhattanDist(s.roverPosition, s.homeBase);
 
+    // Direct high reward for stepping onto an uncollected resource or unscanned objective
+    let cellReward = 0;
+    if (hasResource) {
+      cellReward = 2.0;
+    } else if (hasObjective) {
+      cellReward = 2.5;
+    }
+
+    // Following precomputed optimal path bonus
+    let pathBonus = 0;
+    if (s.roverPath.length > 0 && s.roverPath[0].x === nx && s.roverPath[0].y === ny) {
+      pathBonus = 1.2;
+    }
+
     // Mission progress based on distance to current target
     let missionProgress = 0;
     if (s.roverTarget) {
       const currentDist = manhattanDist(s.roverPosition, s.roverTarget);
       const newDist = manhattanDist({ x: nx, y: ny }, s.roverTarget);
-      missionProgress = (currentDist - newDist) * 0.4;
+      missionProgress = (currentDist - newDist) * 0.6;
     }
 
     // Risk based on battery level and distance from home
@@ -302,8 +393,10 @@ function evaluateCandidates(s: SimulationState): ActionCandidate[] {
     const isBacktrack = prevPos && prevPos.x === nx && prevPos.y === ny;
     const backtrackPenalty = (isBacktrack && !shouldReturn) ? 0.45 : 0;
 
-    // Utility calculation
+    // Overall utility calculation
     const utility = (
+      cellReward +
+      pathBonus +
       0.5 * reward +
       0.8 * infoGain +
       missionProgress +
@@ -331,26 +424,26 @@ function evaluateCandidates(s: SimulationState): ActionCandidate[] {
     });
   }
 
-  // 2. Scan action
-  const scanGain = countUnrevealedInRadius(s, s.roverPosition, s.sensorRadius) * 0.15;
-  if (scanGain > 0) {
+  // 2. Scan action — Active sensor sweep in dense unknown regions
+  const unrevealedInRange = countUnrevealedInRadius(s, s.roverPosition, s.sensorRadius + 1);
+  if (unrevealedInRange >= 5 && !isAtBase && s.battery.currentEnergy > safeEnergy + s.energyCosts.scan * 2) {
     const scanSafe = s.battery.currentEnergy - s.energyCosts.scan >= safeEnergy;
     candidates.push({
       action: { type: ActionType.SCAN, energyCost: s.energyCosts.scan, description: 'Perform sensor scan' },
-      utility: scanGain * 0.6,
-      reward: 0,
-      informationGain: scanGain,
-      missionProgress: 0,
+      utility: 1.35 + Math.min(1.0, (unrevealedInRange / 20) * 0.5),
+      reward: 0.5,
+      informationGain: unrevealedInRange * 0.1,
+      missionProgress: 0.3,
       energyCost: s.energyCosts.scan,
       timeCost: 1,
       risk: 0,
-      explanation: `Scan to reveal ${Math.round(scanGain / 0.15)} unknown cells in sensor range`,
+      explanation: `Sensor sweep reveals ~${unrevealedInRange} cells in expanded sensor range`,
       safetyAllowed: scanSafe,
       safetyReason: scanSafe ? undefined : 'Insufficient energy for scan + safe return',
     });
   }
 
-  // 3. Collect resource at current position
+  // 3. Collect resource at current position (Top priority!)
   const currentCell = s.groundTruth[s.roverPosition.y][s.roverPosition.x];
   if (currentCell.hasResource && currentCell.resource && !currentCell.resource.collected) {
     const res = currentCell.resource;
@@ -358,10 +451,10 @@ function evaluateCandidates(s: SimulationState): ActionCandidate[] {
     const collectSafe = s.battery.currentEnergy - collectCost >= safeEnergy;
     candidates.push({
       action: { type: ActionType.COLLECT, targetResourceId: res.id, energyCost: collectCost, description: `Collect ${RESOURCE_CONFIGS[res.type].label}` },
-      utility: res.value / 50 * 0.8,
+      utility: 3.2,
       reward: res.value / 50,
       informationGain: 0,
-      missionProgress: 0.1,
+      missionProgress: 0.8,
       energyCost: collectCost,
       timeCost: 1,
       risk: 0,
@@ -371,16 +464,16 @@ function evaluateCandidates(s: SimulationState): ActionCandidate[] {
     });
   }
 
-  // 4. Scan objective at current position
+  // 4. Scan objective at current position (Top priority!)
   if (currentCell.hasObjective && currentCell.objective && !currentCell.objective.scanned) {
     const obj = currentCell.objective;
     const objSafe = s.battery.currentEnergy - obj.scanEnergy >= safeEnergy;
     candidates.push({
       action: { type: ActionType.SCAN_OBJECTIVE, energyCost: obj.scanEnergy, description: `Scan ${obj.name}` },
-      utility: 2.0,
+      utility: 3.5,
       reward: obj.dataReward / 50,
       informationGain: 0.5,
-      missionProgress: 0.5,
+      missionProgress: 1.0,
       energyCost: obj.scanEnergy,
       timeCost: 2,
       risk: 0.1,
@@ -391,14 +484,14 @@ function evaluateCandidates(s: SimulationState): ActionCandidate[] {
   }
 
   // 5. Upload data at home base
-  if (posEqual(s.roverPosition, s.homeBase) && s.onboardData > 0) {
+  if (isAtBase && s.onboardData > 0) {
     const uploadSafe = s.battery.currentEnergy - s.energyCosts.dataUpload >= 0;
     candidates.push({
       action: { type: ActionType.UPLOAD_DATA, energyCost: s.energyCosts.dataUpload, description: 'Upload scientific data' },
-      utility: 1.8,
+      utility: 3.0,
       reward: s.onboardData / 50,
       informationGain: 0,
-      missionProgress: 0.4,
+      missionProgress: 0.5,
       energyCost: s.energyCosts.dataUpload,
       timeCost: 1,
       risk: 0,
@@ -407,8 +500,8 @@ function evaluateCandidates(s: SimulationState): ActionCandidate[] {
     });
   }
 
-  // 6. Wait / harvest energy
-  if (s.solar.currentPower > 0 && s.battery.currentEnergy < s.battery.capacity * 0.95) {
+  // 6. Wait / harvest energy in field
+  if (!isAtBase && s.solar.currentPower > 0 && s.battery.currentEnergy < s.battery.capacity * 0.95) {
     const expectedHarvest = calculateEnergyGenerated(s.solar.currentPower, s.timePerTick);
     candidates.push({
       action: { type: ActionType.HARVEST_ENERGY, energyCost: s.energyCosts.idle, description: 'Harvest solar energy' },
@@ -425,7 +518,7 @@ function evaluateCandidates(s: SimulationState): ActionCandidate[] {
   }
 
   // 7. Return to base
-  if (!posEqual(s.roverPosition, s.homeBase)) {
+  if (!isAtBase) {
     const returnPath = findReturnPath(s.beliefMap, s.roverPosition, s.homeBase, s.energyCosts.baseMovement, s.uncertaintyBuffer);
     if (returnPath.length > 0) {
       const firstStep = returnPath[0];
@@ -441,9 +534,13 @@ function evaluateCandidates(s: SimulationState): ActionCandidate[] {
       const hasDataToDeliver = s.onboardData > 25;
       const allDone = s.collectedResources.length >= 3 && s.objectives.every(o => o.scanned);
 
-      if (energyRatio < 1.15) {
+      if (allDone) {
+        // All mission goals met! Return home to finish mission
+        returnUtility = 2.8;
+        returnReason = 'Mission criteria fulfilled — returning to base';
+      } else if (energyRatio < 1.15) {
         // Critical energy — urgent return
-        returnUtility = 2.2;
+        returnUtility = 2.5;
         returnReason = 'CRITICAL ENERGY: Return required';
       } else if (energyRatio < 1.35) {
         // Approaching reserve
@@ -451,15 +548,11 @@ function evaluateCandidates(s: SimulationState): ActionCandidate[] {
         returnReason = 'LOW ENERGY: Returning toward base';
       } else if (s.roverMode === RoverMode.RETURNING_TO_HUB || s.roverMode === RoverMode.CONSERVING) {
         // Already in returning or conserving mode
-        returnUtility = 1.1;
+        returnUtility = 1.8;
         returnReason = 'Returning to hub';
-      } else if (allDone) {
-        // All mission goals met!
-        returnUtility = 1.6;
-        returnReason = 'Mission complete — returning to lander';
       } else if (hasDataToDeliver) {
         // Valuable data on board
-        returnUtility = Math.min(1.0, 0.4 + (s.onboardData / 50) * 0.6);
+        returnUtility = Math.min(1.5, 0.6 + (s.onboardData / 50) * 0.8);
         returnReason = `Delivering ${s.onboardData.toFixed(0)} data units to base`;
       }
 
@@ -491,11 +584,10 @@ interface SafetyResult {
 }
 
 function applySafetyChecks(s: SimulationState, candidates: ActionCandidate[]): SafetyResult {
-  const returnEnergy = s.decision.estimatedReturnEnergy;
-  const safeEnergy = returnEnergy + s.safetyReserve + (returnEnergy * (s.uncertaintyBuffer - 1));
+  const safeEnergy = calculateSafeReturnEnergy(s);
 
-  // Critical battery — force return
-  if (s.battery.currentEnergy < safeEnergy * 1.1 && !posEqual(s.roverPosition, s.homeBase)) {
+  // Critical battery — force return to base immediately
+  if (s.battery.currentEnergy < safeEnergy * 1.05 && !posEqual(s.roverPosition, s.homeBase)) {
     const returnPath = findReturnPath(s.beliefMap, s.roverPosition, s.homeBase, s.energyCosts.baseMovement, s.uncertaintyBuffer);
     if (returnPath.length > 0) {
       const firstStep = returnPath[0];
@@ -522,17 +614,17 @@ function applySafetyChecks(s: SimulationState, candidates: ActionCandidate[]): S
     }
   }
 
-  // Low battery — switch to conserving mode
-  if (s.battery.currentEnergy < safeEnergy * 1.5 && s.roverMode === RoverMode.EXPLORING) {
+  // Low battery — switch to conserving mode when approaching safe reserve
+  if (s.battery.currentEnergy < safeEnergy * 1.18 && s.roverMode === RoverMode.EXPLORING && !posEqual(s.roverPosition, s.homeBase)) {
     s.roverMode = RoverMode.CONSERVING;
     addEvent(s, EventCategory.SAFETY, `Switching to CONSERVING mode (battery: ${(s.battery.currentEnergy / s.battery.capacity * 100).toFixed(0)}%)`);
     s.decision.currentGoal = 'Conserve energy and plan return';
   }
 
-  // Low solar — be cautious
-  if (s.solar.lightingCondition === LightingCondition.EVENING ||
-      s.solar.lightingCondition === LightingCondition.NIGHT) {
-    if (s.roverMode === RoverMode.EXPLORING && s.battery.currentEnergy < s.battery.capacity * 0.6) {
+  // Evening / Night — conserve only if battery is approaching safe reserve
+  if ((s.solar.lightingCondition === LightingCondition.EVENING || s.solar.lightingCondition === LightingCondition.NIGHT) &&
+      !posEqual(s.roverPosition, s.homeBase)) {
+    if (s.roverMode === RoverMode.EXPLORING && s.battery.currentEnergy < safeEnergy * 1.3) {
       s.roverMode = RoverMode.CONSERVING;
       addEvent(s, EventCategory.ENERGY, `Low solar conditions — switching to CONSERVING mode`);
     }
@@ -644,11 +736,22 @@ function executeMove(s: SimulationState, action: RoverAction) {
 
   // Check if reached home base
   if (posEqual(s.roverPosition, s.homeBase)) {
-    addEvent(s, EventCategory.MISSION, 'Arrived at home base');
-    if (s.roverMode === RoverMode.RETURNING_TO_HUB) {
+    const prevPos = s.roverTrail.length >= 2 ? s.roverTrail[s.roverTrail.length - 2] : null;
+    if (!prevPos || !posEqual(prevPos, s.homeBase)) {
+      addEvent(s, EventCategory.MISSION, 'Arrived at home base');
+    }
+    if (s.roverMode === RoverMode.RETURNING_TO_HUB || s.roverMode === RoverMode.CONSERVING) {
       s.roverMode = RoverMode.IDLE;
       s.roverPath = [];
       s.roverTarget = null;
+    }
+    // Deliver data automatically upon docking at base
+    if (s.onboardData > 0) {
+      const delivered = s.onboardData;
+      s.deliveredData += delivered;
+      s.metrics.scientificDataDelivered += delivered;
+      s.onboardData = 0;
+      addEvent(s, EventCategory.SCIENCE, `Base station downlink: Delivered ${delivered.toFixed(0)} scientific data units to mission control`);
     }
     // Check mission completion
     checkMissionCompletion(s);
@@ -674,20 +777,27 @@ function executeCollect(s: SimulationState, action: RoverAction) {
   s.battery = consumeEnergy(s.battery, action.energyCost);
   resource.collected = true;
   resource.discovered = true;
-  s.collectedResources.push(resource);
+  s.collectedResources = [...s.collectedResources, { ...resource }];
   s.metrics.resourcesCollected++;
   s.metrics.totalResourceValue += resource.value;
+
+  // Mineral sample data reward
+  const sampleData = 15;
+  s.onboardData += sampleData;
+  s.metrics.scientificDataGenerated += sampleData;
 
   // Update ground truth and belief map
   const cell = s.groundTruth[resource.position.y][resource.position.x];
   cell.hasResource = false;
+  if (cell.resource) cell.resource.collected = true;
   const bCell = s.beliefMap[resource.position.y][resource.position.x];
   bCell.hasResource = false;
+  if (bCell.resource) bCell.resource.collected = true;
 
   s.roverMode = RoverMode.COLLECTING;
-  addEvent(s, EventCategory.RESOURCE, `Collected ${RESOURCE_CONFIGS[resource.type].label} (value: ${resource.value}) at (${resource.position.x}, ${resource.position.y})`);
+  addEvent(s, EventCategory.RESOURCE, `Collected ${RESOURCE_CONFIGS[resource.type].label} (value: ${resource.value}, +${sampleData} data) at (${resource.position.x}, ${resource.position.y})`);
 
-  // Set goal to find next target
+  // Clear goal so planner evaluates next target
   s.roverTarget = null;
   s.roverPath = [];
 }
@@ -701,13 +811,17 @@ function executeScanObjective(s: SimulationState, action: RoverAction) {
   s.onboardData += obj.dataReward;
   s.metrics.scientificDataGenerated += obj.dataReward;
 
+  // Synchronize cells
+  const gCell = s.groundTruth[obj.position.y][obj.position.x];
+  if (gCell.objective) gCell.objective.scanned = true;
+  const bCell = s.beliefMap[obj.position.y][obj.position.x];
+  if (bCell.objective) bCell.objective.scanned = true;
+
   s.roverMode = RoverMode.SCANNING_OBJECTIVE;
   addEvent(s, EventCategory.SCIENCE, `Scanned '${obj.name}' — ${obj.dataReward} data units acquired`);
 
-  // Set next goal: return to base
-  s.decision.currentGoal = 'Return to base to deliver data';
-  s.roverTarget = s.homeBase;
-  s.roverPath = findReturnPath(s.beliefMap, s.roverPosition, s.homeBase, s.energyCosts.baseMovement, s.uncertaintyBuffer);
+  s.roverTarget = null;
+  s.roverPath = [];
 }
 
 function executeUpload(s: SimulationState, action: RoverAction) {
@@ -772,7 +886,7 @@ export function executeManualAction(state: SimulationState, action: RoverAction)
   s.metrics = { ...s.metrics, returnRouteEnergy: returnEnergy };
 
   // Safety check for manual action
-  const safeEnergy = returnEnergy + s.safetyReserve + (returnEnergy * (s.uncertaintyBuffer - 1));
+  const safeEnergy = calculateSafeReturnEnergy(s);
   const energyAfterAction = s.battery.currentEnergy - action.energyCost;
 
   if (action.type !== ActionType.RETURN_TO_BASE && action.type !== ActionType.WAIT &&
@@ -825,16 +939,17 @@ function revealCells(s: SimulationState, center: Position, radius: number): numb
         // Discover resources
         if (actual.hasResource && actual.resource && !actual.resource.discovered) {
           actual.resource.discovered = true;
+          const rObj = s.resources.find(r => r.id === actual.resource!.id);
+          if (rObj) rObj.discovered = true;
           addEvent(s, EventCategory.RESOURCE, `Detected ${RESOURCE_CONFIGS[actual.resource.type].label} at (${nx}, ${ny})`);
         }
 
         // Discover objectives
         if (actual.hasObjective && actual.objective && !actual.objective.discovered) {
           actual.objective.discovered = true;
+          const oObj = s.objectives.find(o => o.id === actual.objective!.id);
+          if (oObj) oObj.discovered = true;
           addEvent(s, EventCategory.SCIENCE, `Discovered scientific objective '${actual.objective.name}' at (${nx}, ${ny})`);
-          s.decision.currentGoal = `Navigate to ${actual.objective.name}`;
-          s.roverTarget = actual.objective.position;
-          s.roverPath = findReturnPath(s.beliefMap, s.roverPosition, actual.objective.position, s.energyCosts.baseMovement, 1.0) || [];
         }
       }
     }
@@ -963,30 +1078,77 @@ export function updateDecisionGoal(s: SimulationState) {
   if (s.missionComplete || s.missionFailed) return;
 
   const atBase = posEqual(s.roverPosition, s.homeBase);
-  const hasUnscannedObjective = s.objectives.some(o => o.discovered && !o.scanned);
-  const hasDiscoveredResources = s.resources.some(r => r.discovered && !r.collected);
-  const hasOnboardData = s.onboardData > 0;
+  const minResourcesCollected = s.collectedResources.length >= 3;
+  const allObjectivesScanned = s.objectives.every(o => o.scanned);
 
-  if (s.roverMode === RoverMode.RETURNING_TO_HUB || s.roverMode === RoverMode.LOW_POWER) {
+  // 1. If at base and battery < 85%, recharge
+  if (atBase && s.battery.currentEnergy < s.battery.capacity * 0.85) {
+    s.decision.currentGoal = 'Recharging at Base Station';
+    s.roverTarget = null;
+    s.roverPath = [];
+    return;
+  }
+
+  // 2. If all mission goals are accomplished, return to home base
+  if (minResourcesCollected && allObjectivesScanned) {
+    s.decision.currentGoal = 'All goals met — Returning to base';
+    s.roverMode = RoverMode.RETURNING_TO_HUB;
+    s.roverTarget = s.homeBase;
+    if (!atBase && (s.roverPath.length === 0 || !posEqual(s.roverPath[s.roverPath.length - 1], s.homeBase))) {
+      s.roverPath = findReturnPath(s.beliefMap, s.roverPosition, s.homeBase, s.energyCosts.baseMovement, s.uncertaintyBuffer);
+    }
+    return;
+  }
+
+  // 3. If in returning or conserving mode due to low power, target home base
+  if (s.roverMode === RoverMode.RETURNING_TO_HUB || s.roverMode === RoverMode.LOW_POWER || s.roverMode === RoverMode.CONSERVING) {
     s.decision.currentGoal = 'Return to home base safely';
-  } else if (atBase && hasOnboardData) {
-    s.decision.currentGoal = 'Upload collected data';
-  } else if (hasUnscannedObjective) {
-    const obj = s.objectives.find(o => o.discovered && !o.scanned)!;
-    s.decision.currentGoal = `Navigate to ${obj.name}`;
-    s.roverTarget = obj.position;
-  } else if (hasDiscoveredResources) {
-    const nearest = s.resources
+    s.roverTarget = s.homeBase;
+    if (!atBase && (s.roverPath.length === 0 || !posEqual(s.roverPath[s.roverPath.length - 1], s.homeBase))) {
+      s.roverPath = findReturnPath(s.beliefMap, s.roverPosition, s.homeBase, s.energyCosts.baseMovement, s.uncertaintyBuffer);
+    }
+    return;
+  }
+
+  // 4. If we haven't collected 3 resources yet, check for discovered uncollected resources
+  if (!minResourcesCollected) {
+    const uncollected = s.resources
       .filter(r => r.discovered && !r.collected)
       .sort((a, b) => manhattanDist(a.position, s.roverPosition) - manhattanDist(b.position, s.roverPosition));
-    if (nearest.length > 0) {
-      s.decision.currentGoal = `Collect ${RESOURCE_CONFIGS[nearest[0].type].label}`;
-      s.roverTarget = nearest[0].position;
+    if (uncollected.length > 0) {
+      const targetRes = uncollected[0];
+      s.decision.currentGoal = `Collect ${RESOURCE_CONFIGS[targetRes.type].label}`;
+      s.roverTarget = targetRes.position;
+      s.roverMode = RoverMode.NAVIGATING_TO_RESOURCE;
+      if (s.roverPath.length === 0 || !posEqual(s.roverPath[s.roverPath.length - 1], targetRes.position)) {
+        const pathRes = findPath(s.beliefMap, s.roverPosition, targetRes.position, s.energyCosts.baseMovement, 1.1);
+        if (pathRes) s.roverPath = pathRes.path;
+      }
+      return;
     }
-  } else {
-    s.decision.currentGoal = 'Explore unknown terrain';
-    // Find nearest unexplored frontier
-    s.roverTarget = findExplorationTarget(s);
+  }
+
+  // 5. Check for discovered unscanned objectives
+  const unscannedObj = s.objectives.find(o => o.discovered && !o.scanned);
+  if (unscannedObj) {
+    s.decision.currentGoal = `Navigate to ${unscannedObj.name}`;
+    s.roverTarget = unscannedObj.position;
+    s.roverMode = RoverMode.NAVIGATING_TO_OBJECTIVE;
+    if (s.roverPath.length === 0 || !posEqual(s.roverPath[s.roverPath.length - 1], unscannedObj.position)) {
+      const pathRes = findPath(s.beliefMap, s.roverPosition, unscannedObj.position, s.energyCosts.baseMovement, 1.1);
+      if (pathRes) s.roverPath = pathRes.path;
+    }
+    return;
+  }
+
+  // 6. Otherwise explore unknown frontier
+  s.decision.currentGoal = 'Explore unknown terrain';
+  s.roverMode = RoverMode.EXPLORING;
+  const frontier = findExplorationTarget(s);
+  s.roverTarget = frontier;
+  if (frontier && (s.roverPath.length === 0 || !posEqual(s.roverPath[s.roverPath.length - 1], frontier))) {
+    const pathRes = findPath(s.beliefMap, s.roverPosition, frontier, s.energyCosts.baseMovement, 1.2);
+    if (pathRes) s.roverPath = pathRes.path;
   }
 }
 
@@ -997,7 +1159,8 @@ function findExplorationTarget(s: SimulationState): Position | null {
   for (let y = 0; y < s.mapHeight; y++) {
     for (let x = 0; x < s.mapWidth; x++) {
       if (s.beliefMap[y][x].isRevealed) continue;
-      // Find unrevealed cells adjacent to revealed cells
+
+      // Check if this cell is on the frontier (adjacent to a revealed passable cell)
       let adjacentRevealed = false;
       for (const d of [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: 1, y: 0 }, { x: -1, y: 0 }]) {
         const nx = x + d.x, ny = y + d.y;
@@ -1008,8 +1171,28 @@ function findExplorationTarget(s: SimulationState): Position | null {
       }
       if (!adjacentRevealed) continue;
 
+      // Compute frontier information potential
+      let infoPotential = 0;
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && nx < s.mapWidth && ny >= 0 && ny < s.mapHeight && !s.beliefMap[ny][nx].isRevealed) {
+            infoPotential++;
+          }
+        }
+      }
+
       const dist = manhattanDist({ x, y }, s.roverPosition);
-      const score = -dist; // Prefer closer frontier cells
+
+      // Objective direction bonus: guide rover towards undiscovered objective
+      let objBias = 0;
+      const undiscoveredObj = s.objectives.find(o => !o.discovered);
+      if (undiscoveredObj) {
+        const distToObj = manhattanDist({ x, y }, undiscoveredObj.position);
+        objBias = -distToObj * 0.6;
+      }
+
+      const score = (infoPotential * 0.3) - (dist * 0.4) + objBias;
       if (score > bestScore) {
         bestScore = score;
         bestPos = { x, y };
