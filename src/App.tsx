@@ -2,14 +2,15 @@
 // AEGIS Rover — Mission Control Application
 // ============================================================
 
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import {
-  Play, Pause, SkipForward, RotateCcw, Shuffle, Sun, Moon,
-  Battery, Zap, Compass, Target, Crosshair, Upload, Clock,
+  Play, Pause, SkipForward, RotateCcw, Shuffle, Sun,
+  Battery, Zap, Compass, Target, Clock,
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
-  MapPin, Eye, Beaker, Shield, AlertTriangle, CheckCircle2,
-  XCircle, Navigation, ScanLine, Pickaxe, ArrowLeft,
-  Gauge, Radio, Brain, Cpu, Rocket, Footprints
+  MapPin, Eye, Beaker, Shield, AlertTriangle, X,
+  Navigation, ScanLine, Pickaxe, ArrowLeft,
+  Gauge, Radio, Brain, Cpu, Rocket, Footprints,
+  Plus, Minus, Crosshair,
 } from 'lucide-react';
 import { useSimulation } from './hooks/useSimulation';
 import {
@@ -17,7 +18,7 @@ import {
   EventCategory, RESOURCE_CONFIGS, LightingCondition,
   SimulationState, HistoryPoint,
 } from './types/simulation';
-import { formatEnergy, formatPower, formatPercent, formatSimTime, posEqual } from './utils/helpers';
+import { formatEnergy, formatPower, formatPercent, formatSimTime } from './utils/helpers';
 import './index.css';
 
 // ===================== HELPERS =====================
@@ -78,6 +79,185 @@ function getRoverEmoji(dir: Direction): string {
     case Direction.EAST: return '▶️';
     case Direction.WEST: return '◀️';
   }
+}
+
+const CELL_SIZE = 18;
+
+interface ToastItem {
+  id: string;
+  title: string;
+  message: string;
+  level: 'error' | 'warn';
+}
+
+function CircularMap({
+  state,
+  showPath,
+  showTrail,
+  showFog,
+  pathSet,
+  trailSet,
+  onHoverCell,
+}: {
+  state: SimulationState;
+  showPath: boolean;
+  showTrail: boolean;
+  showFog: boolean;
+  pathSet: Set<string>;
+  trailSet: Set<string>;
+  onHoverCell: (cell: { x: number; y: number; screenX: number; screenY: number } | null) => void;
+}) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ active: boolean; lastX: number; lastY: number }>({ active: false, lastX: 0, lastY: 0 });
+  const [vpSize, setVpSize] = useState(520);
+  const [zoom, setZoom] = useState(1.2);
+  const [follow, setFollow] = useState(true);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const apply = () => setVpSize(el.clientWidth);
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const delta = -e.deltaY * 0.0014;
+      setZoom(z => Math.min(2.8, Math.max(0.42, z + delta)));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  const roverCx = state.roverPosition.x * CELL_SIZE + CELL_SIZE / 2;
+  const roverCy = state.roverPosition.y * CELL_SIZE + CELL_SIZE / 2;
+  const camX = follow ? 0 : offset.x;
+  const camY = follow ? 0 : offset.y;
+
+  const recenter = () => {
+    setFollow(true);
+    setOffset({ x: 0, y: 0 });
+  };
+
+  return (
+    <div className="map-orbit">
+      <div
+        ref={viewportRef}
+        className="map-viewport"
+        onPointerDown={e => {
+          (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+          dragRef.current = { active: true, lastX: e.clientX, lastY: e.clientY };
+        }}
+        onPointerMove={e => {
+          if (!dragRef.current.active) return;
+          const dx = e.clientX - dragRef.current.lastX;
+          const dy = e.clientY - dragRef.current.lastY;
+          dragRef.current.lastX = e.clientX;
+          dragRef.current.lastY = e.clientY;
+          setFollow(false);
+          setOffset(o => ({ x: o.x + dx, y: o.y + dy }));
+        }}
+        onPointerUp={() => { dragRef.current.active = false; }}
+        onPointerCancel={() => { dragRef.current.active = false; }}
+      >
+        <div
+          className="map-world"
+          style={{
+            width: state.mapWidth * CELL_SIZE,
+            height: state.mapHeight * CELL_SIZE,
+            gridTemplateColumns: `repeat(${state.mapWidth}, ${CELL_SIZE}px)`,
+            gridTemplateRows: `repeat(${state.mapHeight}, ${CELL_SIZE}px)`,
+            transform: `translate(${vpSize / 2 + camX}px, ${vpSize / 2 + camY}px) scale(${zoom}) translate(${-roverCx}px, ${-roverCy}px)`,
+            transformOrigin: '0 0',
+          }}
+        >
+          {Array.from({ length: state.mapHeight }, (_, y) =>
+            Array.from({ length: state.mapWidth }, (_, x) => {
+              const isRover = state.roverPosition.x === x && state.roverPosition.y === y;
+              const isHome = state.homeBase.x === x && state.homeBase.y === y;
+              const beliefCell = state.beliefMap[y][x];
+              const revealed = beliefCell.isRevealed;
+              const isOnPath = showPath && pathSet.has(`${x},${y}`);
+              const isOnTrail = showTrail && trailSet.has(`${x},${y}`);
+              const terrainCfg = revealed ? TERRAIN_CONFIGS[beliefCell.terrain] : TERRAIN_CONFIGS[TerrainType.UNKNOWN];
+              const bgColor = (showFog && !revealed) ? TERRAIN_CONFIGS[TerrainType.UNKNOWN].color : terrainCfg.color;
+
+              let content = null;
+              if (isRover) {
+                content = <span className="rover-icon">{getRoverEmoji(state.roverDirection)}</span>;
+              } else if (isHome && revealed) {
+                content = <span className="map-cell__home">⌂</span>;
+              } else if (revealed && beliefCell.hasResource && beliefCell.resource && !beliefCell.resource.collected) {
+                const rc = RESOURCE_CONFIGS[beliefCell.resource.type];
+                content = (
+                  <span
+                    className="map-cell__resource"
+                    style={{
+                      color: rc.color,
+                      filter: `drop-shadow(0 0 5px ${rc.color})`,
+                      fontWeight: 'bold',
+                      fontSize: 12,
+                    }}
+                  >
+                    {rc.symbol}
+                  </span>
+                );
+              } else if (revealed && beliefCell.hasObjective && beliefCell.objective && !beliefCell.objective.scanned) {
+                content = <span className="map-cell__objective">🔬</span>;
+              } else if (revealed && beliefCell.hasObjective && beliefCell.objective && beliefCell.objective.scanned) {
+                content = <span style={{ fontSize: 10, opacity: 0.4 }}>✓</span>;
+              } else if (revealed && beliefCell.terrain !== TerrainType.FLAT_ROCK && beliefCell.terrain !== TerrainType.HOME_BASE) {
+                content = <span style={{ fontSize: 8, opacity: 0.4, fontWeight: 700 }}>{terrainCfg.symbol}</span>;
+              }
+
+              const classes = [
+                'map-cell',
+                !revealed && showFog ? 'map-cell--unknown' : '',
+                isOnTrail && !isRover ? 'map-cell--trail' : '',
+                isOnPath && !isRover ? 'map-cell--path' : '',
+                isRover ? 'map-cell--rover' : '',
+                revealed && beliefCell.terrain === TerrainType.BOULDER ? 'map-cell--boulder' : '',
+                revealed && beliefCell.terrain === TerrainType.CRATER ? 'map-cell--crater' : '',
+              ].filter(Boolean).join(' ');
+
+              return (
+                <div
+                  key={`${x}-${y}`}
+                  className={classes}
+                  style={{ backgroundColor: bgColor, width: CELL_SIZE, height: CELL_SIZE }}
+                  onMouseEnter={e => onHoverCell({ x, y, screenX: e.clientX, screenY: e.clientY })}
+                  onMouseLeave={() => onHoverCell(null)}
+                >
+                  {content}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+      <div className="map-hud">
+        <button className="btn btn--icon" title="Zoom in" onClick={() => setZoom(z => Math.min(2.8, z + 0.15))}>
+          <Plus size={14} />
+        </button>
+        <button className="btn btn--icon" title="Zoom out" onClick={() => setZoom(z => Math.max(0.42, z - 0.15))}>
+          <Minus size={14} />
+        </button>
+        <button className={`btn btn--icon ${follow ? 'btn--active' : ''}`} title="Follow rover" onClick={recenter}>
+          <Crosshair size={14} />
+        </button>
+      </div>
+      <div className="map-follow-hint">
+        {state.mapWidth}×{state.mapHeight} · {follow ? 'following rover' : 'free pan'} · {Math.round(zoom * 100)}%
+      </div>
+    </div>
+  );
 }
 
 // ===================== TELEMETRY SVG CHART =====================
@@ -167,9 +347,9 @@ function SvgTelemetryChart({
             <stop offset="100%" stopColor={color1} stopOpacity="0.0" />
           </linearGradient>
         </defs>
-        <line x1={padL} y1={padT} x2={padL + plotW} y2={padT} stroke="rgba(255,255,255,0.06)" strokeDasharray="2,2" />
-        <line x1={padL} y1={padT + plotH / 2} x2={padL + plotW} y2={padT + plotH / 2} stroke="rgba(255,255,255,0.06)" strokeDasharray="2,2" />
-        <line x1={padL} y1={padT + plotH} x2={padL + plotW} y2={padT + plotH} stroke="rgba(255,255,255,0.12)" />
+        <line x1={padL} y1={padT} x2={padL + plotW} y2={padT} stroke="rgba(120,88,64,0.12)" strokeDasharray="2,2" />
+        <line x1={padL} y1={padT + plotH / 2} x2={padL + plotW} y2={padT + plotH / 2} stroke="rgba(120,88,64,0.12)" strokeDasharray="2,2" />
+        <line x1={padL} y1={padT + plotH} x2={padL + plotW} y2={padT + plotH} stroke="rgba(120,88,64,0.22)" />
 
         <text x={padL - 4} y={padT + 7} fill="var(--text-dim)" fontSize="8" textAnchor="end" fontFamily="var(--font-mono)">
           {isPercent ? '100%' : maxVal > 100 ? maxVal.toFixed(0) : maxVal.toFixed(1)}
@@ -196,6 +376,10 @@ function App() {
   const [showTrail, setShowTrail] = useState(true);
   const [showFog, setShowFog] = useState(true);
   const [hoveredCell, setHoveredCell] = useState<{ x: number; y: number; screenX: number; screenY: number } | null>(null);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const seenEventRef = useRef<string | null>(null);
+  const seenFailRef = useRef(false);
+  const lowBatteryRef = useRef(false);
 
   const batteryPercent = state.battery.currentEnergy / state.battery.capacity;
   const reservePercent = (state.safetyReserve + state.decision.estimatedReturnEnergy) / state.battery.capacity;
@@ -221,8 +405,94 @@ function App() {
     return data.filter((_, i) => i % step === 0 || i === data.length - 1);
   }, [state.history]);
 
+  const pushToast = useCallback((toast: Omit<ToastItem, 'id'>) => {
+    const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    setToasts(prev => [{ ...toast, id }, ...prev].slice(0, 4));
+    window.setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 7000);
+  }, []);
+
+  useEffect(() => {
+    const latest = state.events[state.events.length - 1];
+    if (!latest || seenEventRef.current === latest.id) return;
+    seenEventRef.current = latest.id;
+    const text = latest.description;
+    if (latest.category === EventCategory.SAFETY) {
+      pushToast({ title: 'Safety alert', message: text, level: 'error' });
+    } else if (latest.category === EventCategory.ENERGY && /fail|critical|deplet|insufficient|low power/i.test(text)) {
+      pushToast({ title: 'Energy alert', message: text, level: 'error' });
+    } else if (latest.category === EventCategory.MISSION && /fail|abort|lost/i.test(text)) {
+      pushToast({ title: 'Mission alert', message: text, level: 'error' });
+    }
+  }, [state.events, pushToast]);
+
+  useEffect(() => {
+    if (state.missionFailed && !seenFailRef.current) {
+      seenFailRef.current = true;
+      pushToast({ title: 'Mission failed', message: 'The rover cannot continue. Review the log and reset.', level: 'error' });
+    }
+    if (!state.missionFailed) seenFailRef.current = false;
+  }, [state.missionFailed, pushToast]);
+
+  useEffect(() => {
+    if (batteryPercent < 0.15 && state.missionStarted && !lowBatteryRef.current) {
+      lowBatteryRef.current = true;
+      pushToast({
+        title: 'Critical battery',
+        message: `Charge is ${(batteryPercent * 100).toFixed(0)}%. The rover may be forced to return or conserve.`,
+        level: 'error',
+      });
+    }
+    if (batteryPercent > 0.22) lowBatteryRef.current = false;
+  }, [batteryPercent, state.missionStarted, pushToast]);
+
+  useEffect(() => {
+    const onError = (event: ErrorEvent) => {
+      pushToast({ title: 'Runtime error', message: event.message || 'An unexpected error occurred.', level: 'error' });
+    };
+    const onReject = (event: PromiseRejectionEvent) => {
+      const reason = event.reason instanceof Error ? event.reason.message : String(event.reason || 'Unhandled promise rejection');
+      pushToast({ title: 'Runtime error', message: reason, level: 'error' });
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onReject);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onReject);
+    };
+  }, [pushToast]);
+
   return (
     <div className="app-container">
+      <div className="toast-stack">
+        {toasts.map(toast => (
+          <div key={toast.id} className={`error-toast ${toast.level === 'warn' ? 'error-toast--warn' : ''}`}>
+            <div className="error-toast__icon"><AlertTriangle size={14} /></div>
+            <div className="error-toast__body">
+              <div className="error-toast__title">{toast.title}</div>
+              <div className="error-toast__message">{toast.message}</div>
+            </div>
+            <button className="error-toast__close" onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))} aria-label="Dismiss">
+              <X size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {state.missionFailed && (
+        <div className="error-modal">
+          <div className="error-modal__card">
+            <AlertTriangle size={32} color="#c45c4a" />
+            <h2>Mission Failed</h2>
+            <p>The rover is in recovery or has lost the ability to continue safely. Reset or generate a new environment to try again.</p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+              <button className="btn btn--success" onClick={sim.resetMission}><RotateCcw size={13} /> Reset</button>
+              <button className="btn" onClick={() => sim.newEnvironment()}><Shuffle size={13} /> New environment</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* ========== HEADER ========== */}
       <header className="mission-header">
         <div className="mission-header__left">
@@ -237,7 +507,7 @@ function App() {
             <Clock size={12} style={{ verticalAlign: -1, marginRight: 4 }} />
             {formatSimTime(state.metrics.elapsedTime)}
           </span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--cyan-400)' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--solar)' }}>
             {getSolarIcon(state.solar.lightingCondition)} {formatPower(state.solar.currentPower)}
           </span>
           <span className={`mode-badge mode-badge--${getModeClass(state.roverMode)}`}>
@@ -546,95 +816,21 @@ function App() {
             </div>
           </div>
 
-          {/* MAP GRID */}
-          <div className="map-canvas-wrapper">
-            <div
-              className="map-grid"
-              style={{
-                gridTemplateColumns: `repeat(${state.mapWidth}, 20px)`,
-                gridTemplateRows: `repeat(${state.mapHeight}, 20px)`,
-              }}
-            >
-              {Array.from({ length: state.mapHeight }, (_, y) =>
-                Array.from({ length: state.mapWidth }, (_, x) => {
-                  const isRover = state.roverPosition.x === x && state.roverPosition.y === y;
-                  const isHome = state.homeBase.x === x && state.homeBase.y === y;
-                  const beliefCell = state.beliefMap[y][x];
-                  const revealed = beliefCell.isRevealed;
-                  const isOnPath = showPath && pathSet.has(`${x},${y}`);
-                  const isOnTrail = showTrail && trailSet.has(`${x},${y}`);
-
-                  const terrainCfg = revealed ? TERRAIN_CONFIGS[beliefCell.terrain] : TERRAIN_CONFIGS[TerrainType.UNKNOWN];
-                  const bgColor = (showFog && !revealed) ? TERRAIN_CONFIGS[TerrainType.UNKNOWN].color : terrainCfg.color;
-
-                  let content = null;
-                  if (isRover) {
-                    content = <span className="rover-icon">{getRoverEmoji(state.roverDirection)}</span>;
-                  } else if (isHome && revealed) {
-                    content = <span className="map-cell__home">⌂</span>;
-                  } else if (revealed && beliefCell.hasResource && beliefCell.resource && !beliefCell.resource.collected) {
-                    const rc = RESOURCE_CONFIGS[beliefCell.resource.type];
-                    content = (
-                      <span
-                        className="map-cell__resource"
-                        style={{
-                          color: rc.color,
-                          filter: `drop-shadow(0 0 5px ${rc.color})`,
-                          fontWeight: 'bold',
-                          fontSize: 12,
-                        }}
-                      >
-                        {rc.symbol}
-                      </span>
-                    );
-                  } else if (revealed && beliefCell.hasObjective && beliefCell.objective && !beliefCell.objective.scanned) {
-                    content = <span className="map-cell__objective">🔬</span>;
-                  } else if (revealed && beliefCell.hasObjective && beliefCell.objective && beliefCell.objective.scanned) {
-                    content = <span style={{ fontSize: 10, opacity: 0.4 }}>✓</span>;
-                  } else if (!revealed && showFog) {
-                    content = null;
-                  } else if (revealed) {
-                    // Show terrain symbol for revealed non-flat cells
-                    if (beliefCell.terrain !== TerrainType.FLAT_ROCK && beliefCell.terrain !== TerrainType.HOME_BASE) {
-                      content = <span style={{ fontSize: 8, opacity: 0.4, fontWeight: 700 }}>{terrainCfg.symbol}</span>;
-                    }
-                  }
-
-                  const classes = [
-                    'map-cell',
-                    !revealed && showFog ? 'map-cell--unknown' : '',
-                    isOnTrail && !isRover ? 'map-cell--trail' : '',
-                    isOnPath && !isRover ? 'map-cell--path' : '',
-                    isRover ? 'map-cell--rover' : '',
-                    revealed && beliefCell.terrain === TerrainType.BOULDER ? 'map-cell--boulder' : '',
-                    revealed && beliefCell.terrain === TerrainType.CRATER ? 'map-cell--crater' : '',
-                  ].filter(Boolean).join(' ');
-
-                  return (
-                    <div
-                      key={`${x}-${y}`}
-                      className={classes}
-                      style={{ backgroundColor: bgColor }}
-                      onMouseEnter={e => setHoveredCell({ x, y, screenX: e.clientX, screenY: e.clientY })}
-                      onMouseLeave={() => setHoveredCell(null)}
-                    >
-                      {content}
-                    </div>
-                  );
-                })
-              )}
-            </div>
+          <div className="map-stage">
+            <CircularMap
+              state={state}
+              showPath={showPath}
+              showTrail={showTrail}
+              showFog={showFog}
+              pathSet={pathSet}
+              trailSet={trailSet}
+              onHoverCell={setHoveredCell}
+            />
           </div>
 
           {/* Manual controls overlay */}
           {!state.isAutonomous && (
-            <div style={{
-              position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)',
-              background: 'rgba(18, 21, 28, 0.92)', border: '1px solid var(--border-default)',
-              borderRadius: 'var(--radius-lg)', padding: '10px 16px',
-              display: 'flex', alignItems: 'center', gap: 16,
-              backdropFilter: 'blur(8px)',
-            }}>
+            <div className="manual-overlay">
               <div className="manual-controls">
                 <button className="btn btn--icon btn-up" onClick={() => sim.moveRover(Direction.NORTH)}><ChevronUp size={16} /></button>
                 <button className="btn btn--icon btn-down" onClick={() => sim.moveRover(Direction.SOUTH)}><ChevronDown size={16} /></button>
@@ -727,8 +923,8 @@ function App() {
               data={chartData}
               dataKey1="battery"
               dataKey2="solarPower"
-              color1="#60a5fa"
-              color2="#22d3ee"
+              color1="#c17f59"
+              color2="#8a6d55"
               label1="Battery"
               label2="Solar"
               unit1=" Wh"
@@ -744,8 +940,8 @@ function App() {
               data={chartData}
               dataKey1="harvested"
               dataKey2="consumed"
-              color1="#34d399"
-              color2="#f87171"
+              color1="#6b8f71"
+              color2="#c45c4a"
               label1="Harvested"
               label2="Consumed"
               unit1=" Wh"
@@ -760,7 +956,7 @@ function App() {
             <SvgTelemetryChart
               data={chartData}
               dataKey1="explored"
-              color1="#a78bfa"
+              color1="#9a7a72"
               label1="Explored"
               isPercent={true}
               height={75}
