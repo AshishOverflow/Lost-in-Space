@@ -61,14 +61,26 @@ Solar power generation follows astronomical equations:
 
 ## 🗺️ Terrain & Resource Classification
 
-| Terrain Type | Passable | Movement Cost | Description |
-|:---|:---:|:---:|:---|
-| **Flat Plains** | Yes | 1.0× | Stable, low-friction basalt plain |
-| **Rough Terrain** | Yes | 1.8× | Rocky terrain requiring high motor torque |
-| **Sand Dunes** | Yes | 2.5× | Loose regolith with high slip factor |
-| **Steep Slope** | Yes | 3.2× | Significant elevation gradient |
-| **Canyon / Cliff**| No | ∞ | Impassable geological barriers |
-| **Crater Wall** | No | ∞ | Impassable steep impact structures |
+### Planetary Terrain Types
+| Terrain | Symbol | Color | Passable | Movement Cost | Description |
+|:---|:---:|:---:|:---:|:---:|:---|
+| **Flat Rock** | `·` | `#252d3d` (Slate Navy) | Yes | 1.0× | Stable, low-friction basalt plain |
+| **Gravel Bed** | `∴` | `#785338` (Desert Bronze) | Yes | 1.3× | Loose pebble regolith |
+| **Sand Dunes** | `≈` | `#d97706` (Golden Ochre) | Yes | 1.8× | High-slip loose Martian sand dunes |
+| **Rough Rock** | `▲` | `#b91c1c` (Crimson Rust) | Yes | 2.2× | Jagged, high-torque volcanic rock |
+| **Steep Slope** | `⛰` | `#6b21a8` (Amethyst Purple) | Yes | 3.0× | High-elevation gradient incline |
+| **Boulder Barrier** | `■` | `#1e293b` (Obsidian Slate) | No | ∞ | Impassable geological rock barrier |
+| **Impact Crater** | `◯` | `#0b0f19` (Abyssal Void) | No | ∞ | Steep, hazard-prone impact structure |
+| **Home Base** | `⌂` | `#0284c7` (Sapphire Station) | Yes | 1.0× | Lander deployment & data upload hub |
+| **Unknown Fog** | `?` | `#07090e` (Deep Space Void) | Yes | 2.0× | Unexplored terrain (Fog of War) |
+
+### Luminous Minerals & Resources
+| Resource | Symbol | Glowing Color | Base Value | Energy Cost | Description |
+|:---|:---:|:---:|:---:|:---:|:---|
+| **Water Ice** | `❄` | `#00f0ff` (Neon Cyan) | +50 v | 3.0 Wh | Subsurface volatile ice deposits |
+| **Mineral Sample** | `◆` | `#fbbf24` (Solar Amber) | +30 v | 2.0 Wh | Crystalline silicate mineral vein |
+| **Geological Specimen** | `⬡` | `#10b981` (Emerald Green) | +40 v | 2.5 Wh | Sedimentary rock core sample |
+| **Rare Element** | `★` | `#f43f5e` (Hot Rose Pink) | +70 v | 4.0 Wh | High-yield isotopic rare minerals |
 
 ---
 

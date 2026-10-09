@@ -268,10 +268,10 @@ function evaluateCandidates(s: SimulationState): ActionCandidate[] {
 
     // Calculate utility components
     const isUnknown = !beliefCell.isRevealed;
-    const infoGain = isUnknown ? 0.6 : countUnrevealedNeighbors(s, nx, ny) * 0.1;
+    const infoGain = isUnknown ? 0.7 : countUnrevealedNeighbors(s, nx, ny) * 0.15;
     const hasResource = beliefCell.hasResource && beliefCell.resource && !beliefCell.resource.collected;
     const hasObjective = beliefCell.hasObjective && beliefCell.objective && !beliefCell.objective.scanned;
-    const reward = hasResource ? (beliefCell.resource!.value / 70) : hasObjective ? 1.5 : 0;
+    const reward = hasResource ? (beliefCell.resource!.value / 50) : hasObjective ? 1.5 : 0;
     const distToHome = manhattanDist({ x: nx, y: ny }, s.homeBase);
     const currentDistToHome = manhattanDist(s.roverPosition, s.homeBase);
 
@@ -280,7 +280,7 @@ function evaluateCandidates(s: SimulationState): ActionCandidate[] {
     if (s.roverTarget) {
       const currentDist = manhattanDist(s.roverPosition, s.roverTarget);
       const newDist = manhattanDist({ x: nx, y: ny }, s.roverTarget);
-      missionProgress = (currentDist - newDist) * 0.3;
+      missionProgress = (currentDist - newDist) * 0.4;
     }
 
     // Risk based on battery level and distance from home
@@ -294,16 +294,22 @@ function evaluateCandidates(s: SimulationState): ActionCandidate[] {
 
     let directionBonus = 0;
     if (shouldReturn) {
-      directionBonus = distToHome < currentDistToHome ? 0.5 : -0.8;
+      directionBonus = distToHome < currentDistToHome ? 0.8 : -1.2;
     }
+
+    // Anti-oscillation: penalize stepping right back to the previous tile unless returning
+    const prevPos = s.roverTrail.length >= 2 ? s.roverTrail[s.roverTrail.length - 2] : null;
+    const isBacktrack = prevPos && prevPos.x === nx && prevPos.y === ny;
+    const backtrackPenalty = (isBacktrack && !shouldReturn) ? 0.45 : 0;
 
     // Utility calculation
     const utility = (
-      0.3 * reward +
-      0.25 * infoGain +
-      0.2 * missionProgress +
+      0.5 * reward +
+      0.8 * infoGain +
+      missionProgress +
       directionBonus -
-      0.15 * (moveCost / s.energyCosts.baseMovement / 3) -
+      backtrackPenalty -
+      0.1 * (moveCost / s.energyCosts.baseMovement) -
       0.1 * risk
     );
 
@@ -425,19 +431,48 @@ function evaluateCandidates(s: SimulationState): ActionCandidate[] {
       const firstStep = returnPath[0];
       const terrainCfg = TERRAIN_CONFIGS[s.beliefMap[firstStep.y][firstStep.x].terrain];
       const moveCost = s.energyCosts.baseMovement * terrainCfg.movementCost;
-      const urgency = s.battery.currentEnergy < safeEnergy * 1.3 ? 1.5 : 0.3;
       const retEnergy = s.decision.estimatedReturnEnergy;
+
+      // Calculate return utility dynamically based on actual conditions
+      let returnUtility = -0.5;
+      let returnReason = 'Energy healthy — continuing exploration';
+
+      const energyRatio = s.battery.currentEnergy / safeEnergy;
+      const hasDataToDeliver = s.onboardData > 25;
+      const allDone = s.collectedResources.length >= 3 && s.objectives.every(o => o.scanned);
+
+      if (energyRatio < 1.15) {
+        // Critical energy — urgent return
+        returnUtility = 2.2;
+        returnReason = 'CRITICAL ENERGY: Return required';
+      } else if (energyRatio < 1.35) {
+        // Approaching reserve
+        returnUtility = 1.0 + (1.35 - energyRatio) * 3.0;
+        returnReason = 'LOW ENERGY: Returning toward base';
+      } else if (s.roverMode === RoverMode.RETURNING_TO_HUB || s.roverMode === RoverMode.CONSERVING) {
+        // Already in returning or conserving mode
+        returnUtility = 1.1;
+        returnReason = 'Returning to hub';
+      } else if (allDone) {
+        // All mission goals met!
+        returnUtility = 1.6;
+        returnReason = 'Mission complete — returning to lander';
+      } else if (hasDataToDeliver) {
+        // Valuable data on board
+        returnUtility = Math.min(1.0, 0.4 + (s.onboardData / 50) * 0.6);
+        returnReason = `Delivering ${s.onboardData.toFixed(0)} data units to base`;
+      }
 
       candidates.push({
         action: { type: ActionType.RETURN_TO_BASE, direction: getDirectionTo(s.roverPosition, firstStep), targetPosition: firstStep, energyCost: moveCost, description: 'Return toward home base' },
-        utility: urgency,
-        reward: 0,
+        utility: returnUtility,
+        reward: hasDataToDeliver ? s.onboardData / 50 : 0,
         informationGain: 0,
         missionProgress: posEqual(firstStep, s.homeBase) ? 0.3 : 0.1,
         energyCost: moveCost,
         timeCost: 1,
         risk: 0,
-        explanation: `Navigate toward home base (${returnPath.length} steps, ~${retEnergy.toFixed(1)} Wh)${urgency > 1 ? ' — ENERGY LOW' : ''}`,
+        explanation: `${returnReason} (${returnPath.length} steps, ~${retEnergy.toFixed(1)} Wh)`,
         safetyAllowed: true,
       });
     }

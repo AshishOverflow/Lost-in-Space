@@ -25,15 +25,15 @@ export interface TerrainConfig {
 }
 
 export const TERRAIN_CONFIGS: Record<TerrainType, TerrainConfig> = {
-  [TerrainType.FLAT_ROCK]:  { type: TerrainType.FLAT_ROCK,  passable: true,  movementCost: 1.0, label: 'Flat Rock',  color: '#4a4a52', symbol: '·' },
-  [TerrainType.GRAVEL]:     { type: TerrainType.GRAVEL,     passable: true,  movementCost: 1.3, label: 'Gravel',     color: '#6b5b4f', symbol: '∴' },
-  [TerrainType.SAND]:       { type: TerrainType.SAND,       passable: true,  movementCost: 1.8, label: 'Sand',       color: '#8b7355', symbol: '≈' },
-  [TerrainType.ROCKY]:      { type: TerrainType.ROCKY,      passable: true,  movementCost: 2.2, label: 'Rocky',      color: '#5a4e44', symbol: '▲' },
-  [TerrainType.STEEP]:      { type: TerrainType.STEEP,      passable: true,  movementCost: 3.0, label: 'Steep',      color: '#3d3530', symbol: '⛰' },
-  [TerrainType.BOULDER]:    { type: TerrainType.BOULDER,    passable: false, movementCost: Infinity, label: 'Boulder', color: '#2a2a2e', symbol: '■' },
-  [TerrainType.CRATER]:     { type: TerrainType.CRATER,     passable: false, movementCost: Infinity, label: 'Crater', color: '#1e1e22', symbol: '◯' },
-  [TerrainType.UNKNOWN]:    { type: TerrainType.UNKNOWN,    passable: true,  movementCost: 2.0, label: 'Unknown',    color: '#111114', symbol: '?' },
-  [TerrainType.HOME_BASE]:  { type: TerrainType.HOME_BASE,  passable: true,  movementCost: 1.0, label: 'Home Base',  color: '#1a3a5c', symbol: '⌂' },
+  [TerrainType.FLAT_ROCK]:  { type: TerrainType.FLAT_ROCK,  passable: true,  movementCost: 1.0, label: 'Flat Rock',   color: '#252d3d', symbol: '·' },
+  [TerrainType.GRAVEL]:     { type: TerrainType.GRAVEL,     passable: true,  movementCost: 1.3, label: 'Gravel Bed',  color: '#785338', symbol: '∴' },
+  [TerrainType.SAND]:       { type: TerrainType.SAND,       passable: true,  movementCost: 1.8, label: 'Sand Dunes',  color: '#d97706', symbol: '≈' },
+  [TerrainType.ROCKY]:      { type: TerrainType.ROCKY,      passable: true,  movementCost: 2.2, label: 'Rough Rock',  color: '#b91c1c', symbol: '▲' },
+  [TerrainType.STEEP]:      { type: TerrainType.STEEP,      passable: true,  movementCost: 3.0, label: 'Steep Slope', color: '#6b21a8', symbol: '⛰' },
+  [TerrainType.BOULDER]:    { type: TerrainType.BOULDER,    passable: false, movementCost: Infinity, label: 'Boulder Barrier', color: '#1e293b', symbol: '■' },
+  [TerrainType.CRATER]:     { type: TerrainType.CRATER,     passable: false, movementCost: Infinity, label: 'Impact Crater',   color: '#0b0f19', symbol: '◯' },
+  [TerrainType.UNKNOWN]:    { type: TerrainType.UNKNOWN,    passable: true,  movementCost: 2.0, label: 'Unknown Fog', color: '#07090e', symbol: '?' },
+  [TerrainType.HOME_BASE]:  { type: TerrainType.HOME_BASE,  passable: true,  movementCost: 1.0, label: 'Home Base',   color: '#0284c7', symbol: '⌂' },
 };
 
 // --- Grid ---
@@ -73,10 +73,10 @@ export interface Resource {
 }
 
 export const RESOURCE_CONFIGS: Record<ResourceType, { label: string; color: string; symbol: string; baseValue: number; baseEnergy: number }> = {
-  [ResourceType.MINERAL_SAMPLE]:      { label: 'Mineral Sample',      color: '#e8a735', symbol: '◆', baseValue: 30, baseEnergy: 2 },
-  [ResourceType.WATER_ICE]:           { label: 'Water Ice',           color: '#5bc0de', symbol: '❄', baseValue: 50, baseEnergy: 3 },
-  [ResourceType.GEOLOGICAL_SPECIMEN]: { label: 'Geological Specimen', color: '#a0522d', symbol: '⬡', baseValue: 40, baseEnergy: 2.5 },
-  [ResourceType.RARE_ELEMENT]:        { label: 'Rare Element',        color: '#9b59b6', symbol: '★', baseValue: 70, baseEnergy: 4 },
+  [ResourceType.MINERAL_SAMPLE]:      { label: 'Mineral Sample',      color: '#fbbf24', symbol: '◆', baseValue: 30, baseEnergy: 2 },
+  [ResourceType.WATER_ICE]:           { label: 'Water Ice',           color: '#00f0ff', symbol: '❄', baseValue: 50, baseEnergy: 3 },
+  [ResourceType.GEOLOGICAL_SPECIMEN]: { label: 'Geological Specimen', color: '#10b981', symbol: '⬡', baseValue: 40, baseEnergy: 2.5 },
+  [ResourceType.RARE_ELEMENT]:        { label: 'Rare Element',        color: '#f43f5e', symbol: '★', baseValue: 70, baseEnergy: 4 },
 };
 
 // --- Scientific Objective ---

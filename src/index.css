@@ -379,15 +379,24 @@ body {
 }
 
 .map-cell--unknown {
-  background: #0d0f14;
+  background: #07090e;
 }
 
 .map-cell--trail {
-  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.3);
 }
 
 .map-cell--path {
-  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.5);
+}
+
+.map-cell--boulder {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+  background-image: repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(255,255,255,0.06) 3px, rgba(255,255,255,0.06) 6px);
+}
+
+.map-cell--crater {
+  box-shadow: inset 0 0 7px rgba(0, 0, 0, 0.95);
 }
 
 .map-cell--rover {
@@ -406,20 +415,37 @@ body {
 }
 
 .map-cell__resource {
-  font-size: 11px;
-  filter: drop-shadow(0 0 3px currentColor);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 0 4px currentColor);
+  animation: resourceGlow 2.5s infinite ease-in-out;
+}
+
+@keyframes resourceGlow {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 3px currentColor); }
+  50% { transform: scale(1.15); filter: drop-shadow(0 0 8px currentColor); }
 }
 
 .map-cell__objective {
   font-size: 12px;
-  color: #ff6b6b;
-  filter: drop-shadow(0 0 4px rgba(255, 107, 107, 0.6));
+  color: #ff4757;
+  filter: drop-shadow(0 0 5px rgba(255, 71, 87, 0.8));
+  animation: objectiveGlow 2s infinite ease-in-out;
+}
+
+@keyframes objectiveGlow {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); filter: drop-shadow(0 0 8px rgba(255, 71, 87, 1)); }
 }
 
 .map-cell__home {
   font-size: 13px;
-  color: var(--green-400);
-  filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.5));
+  color: #38bdf8;
+  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.8));
 }
 
 /* ===================== CELL TOOLTIP ===================== */

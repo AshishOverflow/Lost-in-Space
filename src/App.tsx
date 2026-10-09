@@ -423,18 +423,41 @@ function App() {
             <div className="terrain-legend">
               {Object.values(TERRAIN_CONFIGS).filter(t => t.type !== TerrainType.UNKNOWN && t.type !== TerrainType.HOME_BASE).map(t => (
                 <div key={t.type} className="terrain-legend__item">
-                  <div className="terrain-legend__swatch" style={{ background: t.color }}>{t.symbol}</div>
-                  <span>{t.label}</span>
+                  <div className="terrain-legend__swatch" style={{ background: t.color, border: t.passable ? 'none' : '1px solid rgba(255,255,255,0.2)' }}>{t.symbol}</div>
+                  <span>{t.label} ({t.passable ? `×${t.movementCost}` : '∞'})</span>
                 </div>
               ))}
               <div className="terrain-legend__item">
-                <div className="terrain-legend__swatch" style={{ background: '#1a3a5c' }}>⌂</div>
+                <div className="terrain-legend__swatch" style={{ background: TERRAIN_CONFIGS[TerrainType.HOME_BASE].color }}>⌂</div>
                 <span>Home Base</span>
               </div>
               <div className="terrain-legend__item">
-                <div className="terrain-legend__swatch" style={{ background: '#0d0f14' }}>?</div>
-                <span>Unknown</span>
+                <div className="terrain-legend__swatch" style={{ background: TERRAIN_CONFIGS[TerrainType.UNKNOWN].color, border: '1px solid rgba(255,255,255,0.1)' }}>?</div>
+                <span>Unknown Fog</span>
               </div>
+            </div>
+          </div>
+
+          {/* Minerals & Resources Legend */}
+          <div className="panel-section">
+            <div className="panel-section__title"><Beaker size={13} /> Minerals & Resources</div>
+            <div className="terrain-legend">
+              {Object.values(RESOURCE_CONFIGS).map(r => (
+                <div key={r.label} className="terrain-legend__item">
+                  <div
+                    className="terrain-legend__swatch"
+                    style={{
+                      background: r.color,
+                      color: '#000',
+                      fontWeight: 700,
+                      boxShadow: `0 0 6px ${r.color}88`,
+                    }}
+                  >
+                    {r.symbol}
+                  </div>
+                  <span>{r.label} (+{r.baseValue}v)</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -542,7 +565,7 @@ function App() {
                   const isOnTrail = showTrail && trailSet.has(`${x},${y}`);
 
                   const terrainCfg = revealed ? TERRAIN_CONFIGS[beliefCell.terrain] : TERRAIN_CONFIGS[TerrainType.UNKNOWN];
-                  const bgColor = (showFog && !revealed) ? '#0d0f14' : terrainCfg.color;
+                  const bgColor = (showFog && !revealed) ? TERRAIN_CONFIGS[TerrainType.UNKNOWN].color : terrainCfg.color;
 
                   let content = null;
                   if (isRover) {
@@ -551,7 +574,19 @@ function App() {
                     content = <span className="map-cell__home">⌂</span>;
                   } else if (revealed && beliefCell.hasResource && beliefCell.resource && !beliefCell.resource.collected) {
                     const rc = RESOURCE_CONFIGS[beliefCell.resource.type];
-                    content = <span className="map-cell__resource" style={{ color: rc.color }}>{rc.symbol}</span>;
+                    content = (
+                      <span
+                        className="map-cell__resource"
+                        style={{
+                          color: rc.color,
+                          filter: `drop-shadow(0 0 5px ${rc.color})`,
+                          fontWeight: 'bold',
+                          fontSize: 12,
+                        }}
+                      >
+                        {rc.symbol}
+                      </span>
+                    );
                   } else if (revealed && beliefCell.hasObjective && beliefCell.objective && !beliefCell.objective.scanned) {
                     content = <span className="map-cell__objective">🔬</span>;
                   } else if (revealed && beliefCell.hasObjective && beliefCell.objective && beliefCell.objective.scanned) {
@@ -561,7 +596,7 @@ function App() {
                   } else if (revealed) {
                     // Show terrain symbol for revealed non-flat cells
                     if (beliefCell.terrain !== TerrainType.FLAT_ROCK && beliefCell.terrain !== TerrainType.HOME_BASE) {
-                      content = <span style={{ fontSize: 8, opacity: 0.3 }}>{terrainCfg.symbol}</span>;
+                      content = <span style={{ fontSize: 8, opacity: 0.4, fontWeight: 700 }}>{terrainCfg.symbol}</span>;
                     }
                   }
 
@@ -571,6 +606,8 @@ function App() {
                     isOnTrail && !isRover ? 'map-cell--trail' : '',
                     isOnPath && !isRover ? 'map-cell--path' : '',
                     isRover ? 'map-cell--rover' : '',
+                    revealed && beliefCell.terrain === TerrainType.BOULDER ? 'map-cell--boulder' : '',
+                    revealed && beliefCell.terrain === TerrainType.CRATER ? 'map-cell--crater' : '',
                   ].filter(Boolean).join(' ');
 
                   return (
