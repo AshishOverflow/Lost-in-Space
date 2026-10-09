@@ -310,6 +310,14 @@ export interface SimulationState {
   sensorRadius: number;
   safetyReserve: number;            // Wh
   uncertaintyBuffer: number;        // multiplier for unknown terrain
+
+  // Active Environment
+  environmentId?: string;
+  environmentName?: string;
+  environmentSubtitle?: string;
+  environmentDescription?: string;
+  environmentProperties?: any;
+  terrainConfigs?: Record<TerrainType, TerrainConfig>;
 }
 
 // --- Simulation Config ---
@@ -317,6 +325,7 @@ export interface SimulationConfig {
   mapWidth: number;
   mapHeight: number;
   seed: number;
+  environmentId?: string;
   sensorRadius: number;
   safetyReserve: number;
   uncertaintyBuffer: number;

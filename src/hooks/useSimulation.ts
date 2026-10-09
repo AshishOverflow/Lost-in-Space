@@ -1,7 +1,3 @@
-// ============================================================
-// useSimulation — React hook for simulation state & controls
-// ============================================================
-
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   SimulationState, SimulationConfig, DEFAULT_CONFIG,
@@ -12,10 +8,30 @@ import {
   createInitialState, simulationTick, executeManualAction, updateDecisionGoal,
 } from '../simulation/engine';
 import { findReturnPath } from '../simulation/pathfinding';
+import { DEFAULT_ENVIRONMENT, MAPS_REGISTRY, AVAILABLE_MAPS } from '../environments/maps';
 
 export function useSimulation(initialConfig: SimulationConfig = DEFAULT_CONFIG) {
-  const [state, setState] = useState<SimulationState>(() => createInitialState(initialConfig));
-  const [config, setConfig] = useState<SimulationConfig>(initialConfig);
+  const [currentMapId, setCurrentMapId] = useState<string>('mars');
+  const [config, setConfig] = useState<SimulationConfig>(() => {
+    const envProps = MAPS_REGISTRY['mars'] || DEFAULT_ENVIRONMENT;
+    return {
+      ...initialConfig,
+      environmentId: envProps.id,
+      mapWidth: envProps.mapWidth,
+      mapHeight: envProps.mapHeight,
+      batteryCapacity: envProps.batteryCapacity,
+      initialBattery: envProps.initialBattery,
+      ratedSolarPower: envProps.solar.ratedSolarPower,
+      panelEfficiency: envProps.solar.panelEfficiency,
+      safetyReserve: envProps.safetyReserve,
+      uncertaintyBuffer: envProps.uncertaintyBuffer,
+      sensorRadius: envProps.sensorRadius,
+    };
+  });
+  const [state, setState] = useState<SimulationState>(() => {
+    const envProps = MAPS_REGISTRY['mars'] || DEFAULT_ENVIRONMENT;
+    return createInitialState(initialConfig, envProps);
+  });
   const intervalRef = useRef<number | null>(null);
 
   // Auto-tick
@@ -33,6 +49,28 @@ export function useSimulation(initialConfig: SimulationConfig = DEFAULT_CONFIG) 
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [state.isPaused, state.missionStarted, state.missionComplete, state.missionFailed, state.simulationSpeed]);
+
+  const switchMap = useCallback((mapId: string, seed?: number) => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    const envProps = MAPS_REGISTRY[mapId] || DEFAULT_ENVIRONMENT;
+    setCurrentMapId(envProps.id);
+    const newConfig: SimulationConfig = {
+      ...config,
+      environmentId: envProps.id,
+      mapWidth: envProps.mapWidth,
+      mapHeight: envProps.mapHeight,
+      batteryCapacity: envProps.batteryCapacity,
+      initialBattery: envProps.initialBattery,
+      ratedSolarPower: envProps.solar.ratedSolarPower,
+      panelEfficiency: envProps.solar.panelEfficiency,
+      safetyReserve: envProps.safetyReserve,
+      uncertaintyBuffer: envProps.uncertaintyBuffer,
+      sensorRadius: envProps.sensorRadius,
+      seed: seed ?? config.seed,
+    };
+    setConfig(newConfig);
+    setState(createInitialState(newConfig, envProps));
+  }, [config]);
 
   const startMission = useCallback(() => {
     setState(prev => ({ ...prev, isPaused: false, missionStarted: true, isRunning: true }));
@@ -56,22 +94,17 @@ export function useSimulation(initialConfig: SimulationConfig = DEFAULT_CONFIG) 
 
   const resetMission = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    setState(createInitialState(config));
-  }, [config]);
+    const envProps = MAPS_REGISTRY[currentMapId] || DEFAULT_ENVIRONMENT;
+    setState(createInitialState(config, envProps));
+  }, [config, currentMapId]);
 
   const newEnvironment = useCallback((seed?: number) => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    const newConfig = { ...config, seed: seed ?? Math.floor(Math.random() * 100000) };
-    setConfig(newConfig);
-    setState(createInitialState(newConfig));
-  }, [config]);
+    switchMap(currentMapId, seed ?? Math.floor(Math.random() * 100000));
+  }, [currentMapId, switchMap]);
 
   const setSeed = useCallback((seed: number) => {
-    const newConfig = { ...config, seed };
-    setConfig(newConfig);
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    setState(createInitialState(newConfig));
-  }, [config]);
+    switchMap(currentMapId, seed);
+  }, [currentMapId, switchMap]);
 
   const setSpeed = useCallback((speed: number) => {
     setState(prev => ({ ...prev, simulationSpeed: speed }));
@@ -90,7 +123,8 @@ export function useSimulation(initialConfig: SimulationConfig = DEFAULT_CONFIG) 
       const ny = prev.roverPosition.y + vec.y;
       if (nx < 0 || nx >= prev.mapWidth || ny < 0 || ny >= prev.mapHeight) return prev;
       const cell = prev.beliefMap[ny][nx];
-      const terrain = TERRAIN_CONFIGS[cell.terrain];
+      const activeConfigs = prev.terrainConfigs || TERRAIN_CONFIGS;
+      const terrain = activeConfigs[cell.terrain];
       if (!terrain.passable) return prev;
 
       const moveCost = prev.energyCosts.baseMovement * terrain.movementCost;
@@ -185,6 +219,9 @@ export function useSimulation(initialConfig: SimulationConfig = DEFAULT_CONFIG) 
   return {
     state,
     config,
+    currentMapId,
+    availableMaps: AVAILABLE_MAPS,
+    switchMap,
     startMission,
     pauseMission,
     resumeMission,

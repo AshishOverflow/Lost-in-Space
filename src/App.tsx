@@ -10,7 +10,7 @@ import {
   MapPin, Eye, Beaker, Shield, AlertTriangle, X,
   Navigation, ScanLine, Pickaxe, ArrowLeft,
   Gauge, Radio, Brain, Cpu, Rocket, Footprints,
-  Plus, Minus, Crosshair, Award, CheckCircle2, CheckSquare, Square, HelpCircle, Home,
+  Plus, Minus, Crosshair, Award, CheckCircle2, CheckSquare, Square, HelpCircle, Home, Globe,
 } from 'lucide-react';
 import { useSimulation } from './hooks/useSimulation';
 import {
@@ -194,8 +194,9 @@ function CircularMap({
               const revealed = beliefCell.isRevealed;
               const isOnPath = showPath && pathSet.has(`${x},${y}`);
               const isOnTrail = showTrail && trailSet.has(`${x},${y}`);
-              const terrainCfg = revealed ? TERRAIN_CONFIGS[beliefCell.terrain] : TERRAIN_CONFIGS[TerrainType.UNKNOWN];
-              const bgColor = (showFog && !revealed) ? TERRAIN_CONFIGS[TerrainType.UNKNOWN].color : terrainCfg.color;
+              const activeConfigs = state.terrainConfigs || TERRAIN_CONFIGS;
+              const terrainCfg = revealed ? activeConfigs[beliefCell.terrain] : activeConfigs[TerrainType.UNKNOWN];
+              const bgColor = (showFog && !revealed) ? activeConfigs[TerrainType.UNKNOWN].color : terrainCfg.color;
 
               let content = null;
               if (isHome && revealed) {
@@ -398,6 +399,10 @@ function App() {
   const { state } = sim;
   const [seedInput, setSeedInput] = useState(String(state.seed));
   const [showPath, setShowPath] = useState(true);
+
+  useEffect(() => {
+    setSeedInput(String(state.seed));
+  }, [state.seed]);
   const [showTrail, setShowTrail] = useState(true);
   const [showFog, setShowFog] = useState(true);
   const [hoveredCell, setHoveredCell] = useState<{ x: number; y: number; screenX: number; screenY: number } | null>(null);
@@ -511,9 +516,18 @@ function App() {
             <AlertTriangle size={32} color="#c45c4a" />
             <h2>Mission Failed</h2>
             <p>The rover is in recovery or has lost the ability to continue safely. Reset or generate a new environment to try again.</p>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-              <button className="btn btn--success" onClick={sim.resetMission}><RotateCcw size={13} /> Reset</button>
-              <button className="btn" onClick={() => sim.newEnvironment()}><Shuffle size={13} /> New environment</button>
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+              <button className="btn btn--success" onClick={sim.resetMission}><RotateCcw size={13} /> Retry Site</button>
+              {sim.availableMaps.map(m => (
+                <button
+                  key={m.id}
+                  className={`btn ${sim.currentMapId === m.id ? 'btn--active' : ''}`}
+                  onClick={() => sim.switchMap(m.id)}
+                  title={m.subtitle}
+                >
+                  <Globe size={12} /> {m.name}
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -521,7 +535,12 @@ function App() {
       {/* ========== HEADER ========== */}
       <header className="mission-header">
         <div className="mission-header__left">
-          <div className="mission-header__title"><span>AEGIS</span> Rover Mission Control</div>
+          <div className="mission-header__title">
+            <span>AEGIS</span> Rover Mission Control
+            <span className="mission-header__world-tag">
+              <Globe size={11} /> {state.environmentName || 'Mars'}
+            </span>
+          </div>
           <div className="mission-header__status">
             <span className={`status-dot ${getStatusDotClass(state.roverMode, state.isPaused, state.isRunning)}`} />
             {!state.isRunning ? 'STANDBY' : state.isPaused ? 'PAUSED' : state.missionComplete ? 'COMPLETE' : state.missionFailed ? 'FAILED' : 'ACTIVE'}
@@ -548,6 +567,14 @@ function App() {
           {/* Mission Overview */}
           <div className="panel-section">
             <div className="panel-section__title"><Rocket size={13} /> Mission Overview</div>
+            <div className="metric-row">
+              <span className="metric-row__label">Target World</span>
+              <span className="metric-row__value metric-row__value--info">{state.environmentName || 'Mars'}</span>
+            </div>
+            <div className="metric-row">
+              <span className="metric-row__label">Landing Site</span>
+              <span className="metric-row__value" style={{ fontSize: 10 }}>{state.environmentSubtitle || 'Gale Basin'}</span>
+            </div>
             <div className="metric-row">
               <span className="metric-row__label">Status</span>
               <span className={`mode-badge mode-badge--${getModeClass(state.roverMode)}`} style={{ fontSize: 9 }}>
@@ -723,18 +750,18 @@ function App() {
           <div className="panel-section">
             <div className="panel-section__title"><MapPin size={13} /> Terrain Legend</div>
             <div className="terrain-legend">
-              {Object.values(TERRAIN_CONFIGS).filter(t => t.type !== TerrainType.UNKNOWN && t.type !== TerrainType.HOME_BASE).map(t => (
+              {Object.values(state.terrainConfigs || TERRAIN_CONFIGS).filter(t => t.type !== TerrainType.UNKNOWN && t.type !== TerrainType.HOME_BASE).map(t => (
                 <div key={t.type} className="terrain-legend__item">
                   <div className="terrain-legend__swatch" style={{ background: t.color, border: t.passable ? 'none' : '1px solid rgba(255,255,255,0.2)' }}>{t.symbol}</div>
                   <span>{t.label} ({t.passable ? `×${t.movementCost}` : '∞'})</span>
                 </div>
               ))}
               <div className="terrain-legend__item">
-                <div className="terrain-legend__swatch" style={{ background: TERRAIN_CONFIGS[TerrainType.HOME_BASE].color }}><Home size={10} color="#ffffff" /></div>
+                <div className="terrain-legend__swatch" style={{ background: (state.terrainConfigs || TERRAIN_CONFIGS)[TerrainType.HOME_BASE]?.color || '#0284c7' }}><Home size={10} color="#ffffff" /></div>
                 <span>Home Base</span>
               </div>
               <div className="terrain-legend__item">
-                <div className="terrain-legend__swatch" style={{ background: TERRAIN_CONFIGS[TerrainType.UNKNOWN].color, border: '1px solid rgba(255,255,255,0.1)' }}>?</div>
+                <div className="terrain-legend__swatch" style={{ background: (state.terrainConfigs || TERRAIN_CONFIGS)[TerrainType.UNKNOWN]?.color || '#1e293b', border: '1px solid rgba(255,255,255,0.1)' }}>?</div>
                 <span>Unknown Fog</span>
               </div>
             </div>
@@ -788,9 +815,25 @@ function App() {
               <button className="btn btn--icon" onClick={sim.resetMission} title="Reset">
                 <RotateCcw size={13} />
               </button>
-              <button className="btn btn--icon" onClick={() => sim.newEnvironment()} title="New Environment">
-                <Shuffle size={13} />
-              </button>
+              <span style={{ color: 'var(--border-strong)', margin: '0 2px' }}>|</span>
+
+              {/* 4 Planetary Maps Switcher */}
+              <div className="map-selector" role="group" aria-label="Planetary Map Switcher">
+                {sim.availableMaps.map(m => {
+                  const isActive = sim.currentMapId === m.id;
+                  return (
+                    <button
+                      key={m.id}
+                      className={`btn map-btn ${isActive ? 'btn--active map-btn--active' : ''}`}
+                      onClick={() => sim.switchMap(m.id)}
+                      title={`${m.name} — ${m.subtitle}`}
+                    >
+                      <Globe size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
+                      {m.name}
+                    </button>
+                  );
+                })}
+              </div>
 
               <span style={{ color: 'var(--border-strong)', margin: '0 2px' }}>|</span>
 
@@ -1053,7 +1096,8 @@ function CellTooltip({ state, x, y, screenX, screenY }: {
 }) {
   const beliefCell = state.beliefMap[y][x];
   const revealed = beliefCell.isRevealed;
-  const terrainCfg = revealed ? TERRAIN_CONFIGS[beliefCell.terrain] : TERRAIN_CONFIGS[TerrainType.UNKNOWN];
+  const activeConfigs = state.terrainConfigs || TERRAIN_CONFIGS;
+  const terrainCfg = revealed ? activeConfigs[beliefCell.terrain] : activeConfigs[TerrainType.UNKNOWN];
   const isRover = state.roverPosition.x === x && state.roverPosition.y === y;
   const isHome = state.homeBase.x === x && state.homeBase.y === y;
 
