@@ -9,11 +9,16 @@ import {
   RoverMode, RoverAction,
 } from '../types/simulation';
 import {
-  createInitialState, simulationTick, executeManualAction, updateDecisionGoal,
+  createInitialState, createStateForEnvironment, simulationTick,
+  executeManualAction, updateDecisionGoal,
 } from '../simulation/engine';
 import { findReturnPath } from '../simulation/pathfinding';
+import {
+  EnvironmentProperties, DEFAULT_ENVIRONMENT, AVAILABLE_MAPS, MAPS_REGISTRY,
+} from '../environments';
 
 export function useSimulation(initialConfig: SimulationConfig = DEFAULT_CONFIG) {
+  const [currentEnvironment, setCurrentEnvironment] = useState<EnvironmentProperties>(DEFAULT_ENVIRONMENT);
   const [state, setState] = useState<SimulationState>(() => createInitialState(initialConfig));
   const [config, setConfig] = useState<SimulationConfig>(initialConfig);
   const intervalRef = useRef<number | null>(null);
@@ -54,24 +59,57 @@ export function useSimulation(initialConfig: SimulationConfig = DEFAULT_CONFIG) 
     });
   }, []);
 
-  const resetMission = useCallback(() => {
+  /**
+   * Switch environment by passing the environment's properties.
+   * This is identical for all environments:
+   *   switchEnvironment(marsProperties)
+   *   switchEnvironment(lunarProperties)
+   *   switchEnvironment(europaProperties)
+   *   switchEnvironment(titanProperties)
+   */
+  const switchEnvironment = useCallback((envProps: EnvironmentProperties, seed?: number) => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    setState(createInitialState(config));
+    setCurrentEnvironment(envProps);
+    const chosenSeed = seed ?? Math.floor(Math.random() * 100000);
+    const newConfig: SimulationConfig = {
+      ...config,
+      mapWidth: envProps.mapWidth,
+      mapHeight: envProps.mapHeight,
+      seed: chosenSeed,
+      sensorRadius: envProps.sensorRadius,
+      safetyReserve: envProps.safetyReserve,
+      uncertaintyBuffer: envProps.uncertaintyBuffer,
+      batteryCapacity: envProps.batteryCapacity,
+      initialBattery: envProps.initialBattery,
+      ratedSolarPower: envProps.solar.ratedSolarPower,
+      panelEfficiency: envProps.solar.panelEfficiency,
+      resourceCount: envProps.resourceCount,
+    };
+    setConfig(newConfig);
+    setState(createStateForEnvironment(envProps, chosenSeed));
   }, [config]);
 
-  const newEnvironment = useCallback((seed?: number) => {
+  /** Switch environment using its unique id ('mars', 'lunar', 'europa', 'titan') */
+  const switchEnvironmentById = useCallback((id: string, seed?: number) => {
+    const envProps = MAPS_REGISTRY[id] || DEFAULT_ENVIRONMENT;
+    switchEnvironment(envProps, seed);
+  }, [switchEnvironment]);
+
+  const resetMission = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    const newConfig = { ...config, seed: seed ?? Math.floor(Math.random() * 100000) };
-    setConfig(newConfig);
-    setState(createInitialState(newConfig));
-  }, [config]);
+    setState(createStateForEnvironment(currentEnvironment, config.seed));
+  }, [currentEnvironment, config.seed]);
+
+  const newEnvironment = useCallback((seed?: number) => {
+    switchEnvironment(currentEnvironment, seed);
+  }, [switchEnvironment, currentEnvironment]);
 
   const setSeed = useCallback((seed: number) => {
     const newConfig = { ...config, seed };
     setConfig(newConfig);
     if (intervalRef.current) clearInterval(intervalRef.current);
-    setState(createInitialState(newConfig));
-  }, [config]);
+    setState(createStateForEnvironment(currentEnvironment, seed));
+  }, [config, currentEnvironment]);
 
   const setSpeed = useCallback((speed: number) => {
     setState(prev => ({ ...prev, simulationSpeed: speed }));
@@ -90,7 +128,7 @@ export function useSimulation(initialConfig: SimulationConfig = DEFAULT_CONFIG) 
       const ny = prev.roverPosition.y + vec.y;
       if (nx < 0 || nx >= prev.mapWidth || ny < 0 || ny >= prev.mapHeight) return prev;
       const cell = prev.beliefMap[ny][nx];
-      const terrain = TERRAIN_CONFIGS[cell.terrain];
+      const terrain = (prev.terrainConfigs && prev.terrainConfigs[cell.terrain]) || TERRAIN_CONFIGS[cell.terrain];
       if (!terrain.passable) return prev;
 
       const moveCost = prev.energyCosts.baseMovement * terrain.movementCost;
@@ -138,7 +176,7 @@ export function useSimulation(initialConfig: SimulationConfig = DEFAULT_CONFIG) 
       const returnPath = findReturnPath(prev.beliefMap, prev.roverPosition, prev.homeBase, prev.energyCosts.baseMovement, prev.uncertaintyBuffer);
       if (returnPath.length === 0) return prev;
       const firstStep = returnPath[0];
-      const terrain = TERRAIN_CONFIGS[prev.beliefMap[firstStep.y][firstStep.x].terrain];
+      const terrain = (prev.terrainConfigs && prev.terrainConfigs[prev.beliefMap[firstStep.y][firstStep.x].terrain]) || TERRAIN_CONFIGS[prev.beliefMap[firstStep.y][firstStep.x].terrain];
       const action: RoverAction = {
         type: ActionType.RETURN_TO_BASE,
         targetPosition: firstStep,
@@ -185,6 +223,10 @@ export function useSimulation(initialConfig: SimulationConfig = DEFAULT_CONFIG) 
   return {
     state,
     config,
+    currentEnvironment,
+    availableEnvironments: AVAILABLE_MAPS,
+    switchEnvironment,
+    switchEnvironmentById,
     startMission,
     pauseMission,
     resumeMission,

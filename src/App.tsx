@@ -227,6 +227,20 @@ function App() {
       <header className="mission-header">
         <div className="mission-header__left">
           <div className="mission-header__title"><span>AEGIS</span> Rover Mission Control</div>
+          <div className="environment-badge" style={{
+            fontSize: 10,
+            padding: '2px 8px',
+            borderRadius: 12,
+            background: 'rgba(56, 189, 248, 0.1)',
+            border: '1px solid rgba(56, 189, 248, 0.25)',
+            color: 'var(--cyan-400)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4
+          }}>
+            <span>{sim.currentEnvironment.icon || '🪐'}</span>
+            <span>{sim.currentEnvironment.name}</span>
+          </div>
           <div className="mission-header__status">
             <span className={`status-dot ${getStatusDotClass(state.roverMode, state.isPaused, state.isRunning)}`} />
             {!state.isRunning ? 'STANDBY' : state.isPaused ? 'PAUSED' : state.missionComplete ? 'COMPLETE' : state.missionFailed ? 'FAILED' : 'ACTIVE'}
@@ -253,6 +267,12 @@ function App() {
           {/* Mission Overview */}
           <div className="panel-section">
             <div className="panel-section__title"><Rocket size={13} /> Mission Overview</div>
+            <div className="metric-row">
+              <span className="metric-row__label">Map / World</span>
+              <span className="metric-row__value" style={{ color: 'var(--cyan-400)' }}>
+                {sim.currentEnvironment.icon} {sim.currentEnvironment.name}
+              </span>
+            </div>
             <div className="metric-row">
               <span className="metric-row__label">Status</span>
               <span className={`mode-badge mode-badge--${getModeClass(state.roverMode)}`} style={{ fontSize: 9 }}>
@@ -419,20 +439,20 @@ function App() {
 
           {/* Terrain Legend */}
           <div className="panel-section">
-            <div className="panel-section__title"><MapPin size={13} /> Terrain Legend</div>
+            <div className="panel-section__title"><MapPin size={13} /> Terrain Legend ({sim.currentEnvironment.name})</div>
             <div className="terrain-legend">
-              {Object.values(TERRAIN_CONFIGS).filter(t => t.type !== TerrainType.UNKNOWN && t.type !== TerrainType.HOME_BASE).map(t => (
+              {Object.values(state.terrainConfigs || TERRAIN_CONFIGS).filter(t => t.type !== TerrainType.UNKNOWN && t.type !== TerrainType.HOME_BASE).map(t => (
                 <div key={t.type} className="terrain-legend__item">
                   <div className="terrain-legend__swatch" style={{ background: t.color, border: t.passable ? 'none' : '1px solid rgba(255,255,255,0.2)' }}>{t.symbol}</div>
                   <span>{t.label} ({t.passable ? `×${t.movementCost}` : '∞'})</span>
                 </div>
               ))}
               <div className="terrain-legend__item">
-                <div className="terrain-legend__swatch" style={{ background: TERRAIN_CONFIGS[TerrainType.HOME_BASE].color }}>⌂</div>
+                <div className="terrain-legend__swatch" style={{ background: (state.terrainConfigs || TERRAIN_CONFIGS)[TerrainType.HOME_BASE].color }}>⌂</div>
                 <span>Home Base</span>
               </div>
               <div className="terrain-legend__item">
-                <div className="terrain-legend__swatch" style={{ background: TERRAIN_CONFIGS[TerrainType.UNKNOWN].color, border: '1px solid rgba(255,255,255,0.1)' }}>?</div>
+                <div className="terrain-legend__swatch" style={{ background: (state.terrainConfigs || TERRAIN_CONFIGS)[TerrainType.UNKNOWN].color, border: '1px solid rgba(255,255,255,0.1)' }}>?</div>
                 <span>Unknown Fog</span>
               </div>
             </div>
@@ -489,6 +509,35 @@ function App() {
               <button className="btn btn--icon" onClick={() => sim.newEnvironment()} title="New Environment">
                 <Shuffle size={13} />
               </button>
+
+              <span style={{ color: 'var(--border-strong)', margin: '0 2px' }}>|</span>
+
+              {/* Environment / Map Selector */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>MAP:</span>
+                <select
+                  className="input-field"
+                  style={{
+                    fontSize: 11,
+                    height: 26,
+                    padding: '2px 6px',
+                    background: 'var(--bg-card)',
+                    color: 'var(--text-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                  }}
+                  value={sim.currentEnvironment.id}
+                  onChange={e => sim.switchEnvironmentById(e.target.value)}
+                  title="Switch Environment Map"
+                >
+                  {sim.availableEnvironments.map(env => (
+                    <option key={env.id} value={env.id}>
+                      {env.icon || '🪐'} {env.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               <span style={{ color: 'var(--border-strong)', margin: '0 2px' }}>|</span>
 
@@ -564,8 +613,9 @@ function App() {
                   const isOnPath = showPath && pathSet.has(`${x},${y}`);
                   const isOnTrail = showTrail && trailSet.has(`${x},${y}`);
 
-                  const terrainCfg = revealed ? TERRAIN_CONFIGS[beliefCell.terrain] : TERRAIN_CONFIGS[TerrainType.UNKNOWN];
-                  const bgColor = (showFog && !revealed) ? TERRAIN_CONFIGS[TerrainType.UNKNOWN].color : terrainCfg.color;
+                  const activeTerrainConfigs = state.terrainConfigs || TERRAIN_CONFIGS;
+                  const terrainCfg = revealed ? activeTerrainConfigs[beliefCell.terrain] : activeTerrainConfigs[TerrainType.UNKNOWN];
+                  const bgColor = (showFog && !revealed) ? activeTerrainConfigs[TerrainType.UNKNOWN].color : terrainCfg.color;
 
                   let content = null;
                   if (isRover) {
@@ -801,7 +851,8 @@ function CellTooltip({ state, x, y, screenX, screenY }: {
 }) {
   const beliefCell = state.beliefMap[y][x];
   const revealed = beliefCell.isRevealed;
-  const terrainCfg = revealed ? TERRAIN_CONFIGS[beliefCell.terrain] : TERRAIN_CONFIGS[TerrainType.UNKNOWN];
+  const activeTerrainConfigs = state.terrainConfigs || TERRAIN_CONFIGS;
+  const terrainCfg = revealed ? activeTerrainConfigs[beliefCell.terrain] : activeTerrainConfigs[TerrainType.UNKNOWN];
   const isRover = state.roverPosition.x === x && state.roverPosition.y === y;
   const isHome = state.homeBase.x === x && state.homeBase.y === y;
 

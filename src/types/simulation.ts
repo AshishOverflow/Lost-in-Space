@@ -262,6 +262,9 @@ export interface HistoryPoint {
 // --- Complete Simulation State ---
 export interface SimulationState {
   // Environment
+  environmentId?: string;
+  environmentName?: string;
+  terrainConfigs?: Record<TerrainType, TerrainConfig>;
   mapWidth: number;
   mapHeight: number;
   seed: number;

@@ -5,12 +5,14 @@
 import {
   SimulationState, SimulationConfig, DEFAULT_CONFIG,
   RoverMode, Direction, DIRECTION_VECTORS, ActionType,
-  RoverAction, ActionCandidate, TerrainType, TERRAIN_CONFIGS,
+  RoverAction, ActionCandidate, TerrainType, TERRAIN_CONFIGS, TerrainConfig,
   GridCell, Position, Resource, EventCategory, MissionEvent,
   DecisionState, HistoryPoint, LightingCondition, SolarState, BatteryState,
   RESOURCE_CONFIGS,
 } from '../types/simulation';
-import { generateEnvironment } from './terrainGenerator';
+import { generateEnvironment as generateModularEnv } from '../environments/generator';
+import { EnvironmentProperties } from '../environments/types';
+import { DEFAULT_ENVIRONMENT } from '../environments/maps';
 import { findPath, estimateReturnEnergy, findReturnPath } from './pathfinding';
 import { updateSolarState, calculateSolarPower, calculateEnergyGenerated, predictSolarGeneration } from './solarModel';
 import { posKey, posEqual, manhattanDist } from '../utils/helpers';
@@ -19,16 +21,19 @@ import { posKey, posEqual, manhattanDist } from '../utils/helpers';
 // State creation
 // ============================================================
 
-export function createInitialState(config: SimulationConfig = DEFAULT_CONFIG): SimulationState {
-  const env = generateEnvironment(config);
+export function createStateForEnvironment(
+  envProps: EnvironmentProperties,
+  seed: number = 42
+): SimulationState {
+  const env = generateModularEnv(envProps, seed);
 
   const solar: SolarState = {
-    ratedPower: config.ratedSolarPower,
-    panelEfficiency: config.panelEfficiency,
-    sunlightFactor: 0.9,
+    ratedPower: envProps.solar.ratedSolarPower,
+    panelEfficiency: envProps.solar.panelEfficiency,
+    sunlightFactor: envProps.solar.baseSunlightFactor,
     currentPower: 0,
-    lightingCondition: LightingCondition.DAYLIGHT,
-    dustFactor: 1.0,
+    lightingCondition: envProps.solar.initialLighting ?? LightingCondition.DAYLIGHT,
+    dustFactor: envProps.solar.dustFactor,
   };
 
   // Start at 8:00 AM simulation time (28800 seconds)
@@ -36,26 +41,29 @@ export function createInitialState(config: SimulationConfig = DEFAULT_CONFIG): S
   const updatedSolar = updateSolarState(solar, initialElapsedTime, false);
 
   const battery: BatteryState = {
-    capacity: config.batteryCapacity,
-    currentEnergy: config.initialBattery,
+    capacity: envProps.batteryCapacity,
+    currentEnergy: envProps.initialBattery,
     totalHarvested: 0,
     totalConsumed: 0,
   };
 
   const energyCosts = {
-    baseMovement: 2.0,
-    scan: 1.0,
-    collect: 3.0,
-    objectiveScan: 8.0,
-    dataUpload: 2.0,
-    idle: 0.1,
-    communication: 0.5,
+    baseMovement: envProps.energyCosts?.baseMovement ?? 2.0,
+    scan: envProps.energyCosts?.scan ?? 1.0,
+    collect: envProps.energyCosts?.collect ?? 3.0,
+    objectiveScan: envProps.energyCosts?.objectiveScan ?? 8.0,
+    dataUpload: envProps.energyCosts?.dataUpload ?? 2.0,
+    idle: envProps.energyCosts?.idle ?? 0.1,
+    communication: envProps.energyCosts?.communication ?? 0.5,
   };
 
   const state: SimulationState = {
-    mapWidth: config.mapWidth,
-    mapHeight: config.mapHeight,
-    seed: config.seed,
+    environmentId: envProps.id,
+    environmentName: envProps.name,
+    terrainConfigs: env.terrainConfigs,
+    mapWidth: envProps.mapWidth,
+    mapHeight: envProps.mapHeight,
+    seed,
     groundTruth: env.groundTruth,
     beliefMap: env.beliefMap,
     resources: env.resources,
@@ -86,7 +94,7 @@ export function createInitialState(config: SimulationConfig = DEFAULT_CONFIG): S
       actionReason: 'Mission not started',
       candidates: [],
       estimatedReturnEnergy: 0,
-      safetyReserve: config.safetyReserve,
+      safetyReserve: envProps.safetyReserve,
       riskLevel: 'LOW',
       nextPlannedAction: 'Start mission',
       safetyInterventions: 0,
@@ -103,7 +111,7 @@ export function createInitialState(config: SimulationConfig = DEFAULT_CONFIG): S
       scientificDataDelivered: 0,
       mapExploredPercent: 0,
       discoveredCells: 0,
-      totalCells: config.mapWidth * config.mapHeight,
+      totalCells: envProps.mapWidth * envProps.mapHeight,
       safetyInterventions: 0,
       rejectedActions: 0,
       returnRouteEnergy: 0,
@@ -113,13 +121,13 @@ export function createInitialState(config: SimulationConfig = DEFAULT_CONFIG): S
     isAutonomous: true,
     isPaused: true,
     isRunning: false,
-    simulationSpeed: config.simulationSpeed,
+    simulationSpeed: envProps.simulationSpeed ?? 2,
     tickCount: 0,
-    timePerTick: config.timePerTick,
+    timePerTick: envProps.timePerTick ?? 300,
 
-    sensorRadius: config.sensorRadius,
-    safetyReserve: config.safetyReserve,
-    uncertaintyBuffer: config.uncertaintyBuffer,
+    sensorRadius: envProps.sensorRadius,
+    safetyReserve: envProps.safetyReserve,
+    uncertaintyBuffer: envProps.uncertaintyBuffer,
   };
 
   // Initial sensor scan
@@ -128,6 +136,29 @@ export function createInitialState(config: SimulationConfig = DEFAULT_CONFIG): S
   recordHistory(state);
 
   return state;
+}
+
+export function createInitialState(config: SimulationConfig = DEFAULT_CONFIG): SimulationState {
+  const envProps: EnvironmentProperties = {
+    ...DEFAULT_ENVIRONMENT,
+    mapWidth: config.mapWidth,
+    mapHeight: config.mapHeight,
+    sensorRadius: config.sensorRadius,
+    safetyReserve: config.safetyReserve,
+    uncertaintyBuffer: config.uncertaintyBuffer,
+    batteryCapacity: config.batteryCapacity,
+    initialBattery: config.initialBattery,
+    resourceCount: config.resourceCount,
+    timePerTick: config.timePerTick,
+    simulationSpeed: config.simulationSpeed,
+    solar: {
+      ...DEFAULT_ENVIRONMENT.solar,
+      ratedSolarPower: config.ratedSolarPower,
+      panelEfficiency: config.panelEfficiency,
+    },
+  };
+
+  return createStateForEnvironment(envProps, config.seed);
 }
 
 // ============================================================
@@ -248,6 +279,10 @@ function executeAutonomousAction(s: SimulationState) {
 // Candidate action evaluation — Utility planner
 // ============================================================
 
+function getTerrainConfig(s: SimulationState, type: TerrainType): TerrainConfig {
+  return (s.terrainConfigs && s.terrainConfigs[type]) || TERRAIN_CONFIGS[type];
+}
+
 function evaluateCandidates(s: SimulationState): ActionCandidate[] {
   const candidates: ActionCandidate[] = [];
   const returnEnergy = s.decision.estimatedReturnEnergy;
@@ -261,7 +296,7 @@ function evaluateCandidates(s: SimulationState): ActionCandidate[] {
     if (nx < 0 || nx >= s.mapWidth || ny < 0 || ny >= s.mapHeight) continue;
 
     const beliefCell = s.beliefMap[ny][nx];
-    const terrain = TERRAIN_CONFIGS[beliefCell.terrain];
+    const terrain = getTerrainConfig(s, beliefCell.terrain);
     if (!terrain.passable) continue;
 
     const moveCost = s.energyCosts.baseMovement * terrain.movementCost;
@@ -429,7 +464,7 @@ function evaluateCandidates(s: SimulationState): ActionCandidate[] {
     const returnPath = findReturnPath(s.beliefMap, s.roverPosition, s.homeBase, s.energyCosts.baseMovement, s.uncertaintyBuffer);
     if (returnPath.length > 0) {
       const firstStep = returnPath[0];
-      const terrainCfg = TERRAIN_CONFIGS[s.beliefMap[firstStep.y][firstStep.x].terrain];
+      const terrainCfg = getTerrainConfig(s, s.beliefMap[firstStep.y][firstStep.x].terrain);
       const moveCost = s.energyCosts.baseMovement * terrainCfg.movementCost;
       const retEnergy = s.decision.estimatedReturnEnergy;
 
@@ -499,7 +534,7 @@ function applySafetyChecks(s: SimulationState, candidates: ActionCandidate[]): S
     const returnPath = findReturnPath(s.beliefMap, s.roverPosition, s.homeBase, s.energyCosts.baseMovement, s.uncertaintyBuffer);
     if (returnPath.length > 0) {
       const firstStep = returnPath[0];
-      const terrainCfg = TERRAIN_CONFIGS[s.beliefMap[firstStep.y][firstStep.x].terrain];
+      const terrainCfg = getTerrainConfig(s, s.beliefMap[firstStep.y][firstStep.x].terrain);
       const moveCost = s.energyCosts.baseMovement * terrainCfg.movementCost;
 
       s.roverMode = RoverMode.RETURNING_TO_HUB;
@@ -594,7 +629,7 @@ function executeMove(s: SimulationState, action: RoverAction) {
   // Validate against GROUND TRUTH
   if (target.x < 0 || target.x >= s.mapWidth || target.y < 0 || target.y >= s.mapHeight) return;
   const actualCell = s.groundTruth[target.y][target.x];
-  const actualTerrain = TERRAIN_CONFIGS[actualCell.terrain];
+  const actualTerrain = getTerrainConfig(s, actualCell.terrain);
 
   if (!actualTerrain.passable) {
     // Blocked! Update belief map
