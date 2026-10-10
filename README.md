@@ -1,155 +1,110 @@
-# AEGIS Rover — Resource-Aware Autonomous Exploration & Mission Control
+﻿# AEGIS Rover: Lost in Space (Planetary Rover Mission Control)
 
-An interactive, resource-constrained planetary rover simulation built with **React**, **TypeScript**, and **Vite**.
+## Team
 
-AEGIS simulates an autonomous rover deployed on an unknown planetary surface (e.g., Mars), tasked with exploring unmapped terrain, discovering scientific points of interest, collecting geological samples, managing its energy using **Solar Array Power (SAP)**, and returning safely to base before its battery reaches critical reserves.
+**Team Name:** NASA
 
----
-
-## 🚀 Key Highlights & Capabilities
-
-- **Autonomous Decision-Making**: Multi-objective utility planner weighing information gain, scientific value, movement costs, and risk.
-- **Solar Energy Harvesting (SAP)**: Diurnal solar cycle simulation with zenith angles, solar flux, shadows, and terrain illumination.
-- **A* Pathfinding & Terrain Physics**: Realistic energy dissipation based on surface elevation, sand traps, rough rocks, and obstacles.
-- **Explainable AI (XAI)**: Live candidate decision evaluations showing rank, calculated utility, predicted costs, and safety rulings.
-- **Guaranteed Safe-Return Safety Manager**: Continuous calculation of path-back energy costs plus safety margins; triggers autonomous return-to-base protocols.
-- **Partial Observability**: Fog-of-war exploration with sensor radius revealing terrain and scientific objectives dynamically.
-- **Deterministic & Seedable**: Seed-based procedural terrain generator allowing full experiment reproducibility.
-- **Interactive Mission Control UI**: Glassmorphism dark-theme dashboard with interactive canvas grid, real-time Recharts telemetry, and manual override controls.
+| Name | Roll Number |
+|:---|:---|
+| Narain Surya RS | 24PC16 |
+| Ashish MKS | 24PC03 |
+| Sachin Saravan K | 24PC31 |
+| Aparnaa M | 24PC02 |
+| Bindusai Gunturi | 24PC10 |
 
 ---
 
-## 🧭 Workflow & Simulation Architecture
+## Selected Problem Statement
 
-### 1. The Core Simulation Loop
-Each simulation step models a 5-minute slice of planetary time:
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Environment    │ ──> │ Sensor Pipeline │ ──> │ Utility Planner │
-│  - Solar flux   │     │ - Fog of war    │     │ - Candidate gen │
-│  - Time of day  │     │ - POI discovery │     │ - Scoring       │
-└─────────────────┘     └─────────────────┘     └────────┬────────┘
-                                                         │
-┌─────────────────┐     ┌─────────────────┐     ┌────────┴────────┐
-│ State & History │ <── │ Energy Physics  │ <── │ Safety Manager  │
-│ - Battery, logs │     │ - Move / Sample │     │ - Reserve check │
-│ - Metrics update│     │ - Solar harvest │     │ - Return veto   │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-```
+**Lost in Space: Rover Mission Control**
 
-### 2. Autonomous Planner & Utility Scoring
-The AI engine evaluates candidate actions each step:
-- **Movement (N, S, E, W)**: Evaluated based on unrevealed terrain neighbors, proximity to known resources, and terrain travel cost.
-- **Geological Sample Collection**: High-utility action triggered when atop minable resources (Water Ice, Regolith, Basalt, Hematite).
-- **Scientific POI Scanning**: Collects high-value scientific survey data.
-- **Solar Harvesting / Wait**: If battery is low during peak daylight, stationary charging yields maximum net energy intake.
-- **Return to Base**: Evaluates A* path to base; utility sharply increases as battery approaches the safety reserve threshold.
-
-### 3. Safety Manager & Safe-Return Guarantee
-The safety manager continuously calculates:
-$$\text{Safe Energy Threshold} = E_{\text{return\_path}} \times \mu_{\text{uncertainty}} + E_{\text{reserve}}$$
-- If the current battery falls near this threshold, the safety manager **vetoes exploratory actions** and forces `RETURN_TO_BASE`.
-- In manual mode, unsafe moves that would trap the rover are flagged and protected.
-
-### 4. Solar Power (SAP) Model
-Solar power generation follows astronomical equations:
-- **Diurnal cycle**: 24-hour Martian sol simulated in continuous steps.
-- **Solar elevation & zenith angle**: Power peaks at solar noon, decreases at dawn/dusk, and drops to zero at night.
-- **Lighting zones**: Direct sunlight (100%), Diffuse light (50%), Shadow/Occlusion (15%), Night (0%).
+Build a simulation system that controls a rover exploring an unknown environment with limited energy. The rover must collect valuable data, upload it from designated communication zones, adapt to changing conditions, and plan a safe return before its energy runs out.
 
 ---
 
-## 🗺️ Terrain & Resource Classification
+## Solution Description
 
-### Planetary Terrain Types
-| Terrain | Symbol | Color | Passable | Movement Cost | Description |
-|:---|:---:|:---:|:---:|:---:|:---|
-| **Flat Rock** | `·` | `#252d3d` (Slate Navy) | Yes | 1.0× | Stable, low-friction basalt plain |
-| **Gravel Bed** | `∴` | `#785338` (Desert Bronze) | Yes | 1.3× | Loose pebble regolith |
-| **Sand Dunes** | `≈` | `#d97706` (Golden Ochre) | Yes | 1.8× | High-slip loose Martian sand dunes |
-| **Rough Rock** | `▲` | `#b91c1c` (Crimson Rust) | Yes | 2.2× | Jagged, high-torque volcanic rock |
-| **Steep Slope** | `⛰` | `#6b21a8` (Amethyst Purple) | Yes | 3.0× | High-elevation gradient incline |
-| **Boulder Barrier** | `■` | `#1e293b` (Obsidian Slate) | No | ∞ | Impassable geological rock barrier |
-| **Impact Crater** | `◯` | `#0b0f19` (Abyssal Void) | No | ∞ | Steep, hazard-prone impact structure |
-| **Home Base** | `⌂` | `#0284c7` (Sapphire Station) | Yes | 1.0× | Lander deployment & data upload hub |
-| **Unknown Fog** | `?` | `#07090e` (Deep Space Void) | Yes | 2.0× | Unexplored terrain (Fog of War) |
+AEGIS Rover Mission Control is an interactive, browser-based rover simulation. An autonomous rover explores four procedurally generated planetary environments (Mars, Moon, Europa, Titan) while a live dashboard shows its decisions.
 
-### Luminous Minerals & Resources
-| Resource | Symbol | Glowing Color | Base Value | Energy Cost | Description |
-|:---|:---:|:---:|:---:|:---:|:---|
-| **Water Ice** | `❄` | `#00f0ff` (Neon Cyan) | +50 v | 3.0 Wh | Subsurface volatile ice deposits |
-| **Mineral Sample** | `◆` | `#fbbf24` (Solar Amber) | +30 v | 2.0 Wh | Crystalline silicate mineral vein |
-| **Geological Specimen** | `⬡` | `#10b981` (Emerald Green) | +40 v | 2.5 Wh | Sedimentary rock core sample |
-| **Rare Element** | `★` | `#f43f5e` (Hot Rose Pink) | +70 v | 4.0 Wh | High-yield isotopic rare minerals |
+- **Unknown environment:** Seeded PRNG terrain generation gives reproducible maps with planet-specific terrain, hazards and solar conditions. The environment can be switched mid-session.
+- **Exploration tracking:** Fog-of-war reveals only cells within sensor range. Explored % is tracked live, and every discovery is logged with coordinates.
+- **Energy management:** Terrain-dependent movement costs and a solar charging cycle drive the energy model. A Safety Manager vetoes exploration and forces a return when the battery nears `E_return_path × uncertainty_buffer + safety_reserve`.
+- **Useful locations:** The rover finds biosignature objectives and rich sample sources, and the user can designate a Most Valuable Location for the planner to prioritise.
+- **Data collection and transport:** Samples are collected and data is buffered onboard. Delivery uses a CCSDS DTN (RFC 9171) simulation and only completes when the rover docks at the home base hub.
+- **Communication and charging zones:** The home hub is the downlink point, and solar charging points act as mid-mission waypoints. The planner scores both when choosing actions.
+- **Blocked paths:** Dynamic hazards appear mid-mission. A* re-plans every tick, and a Path Safety Score and Wheel Slip Probability update live.
+- **Measurable results:** A Mission Debrief popup summarises the run (area explored, resources, energy harvested, distance, data delivered). Every run is also appended to `src/database/missions.json`, and a live telemetry log records all events.
+
+| Planet | Solar Flux | Battery | Key Challenge |
+|:---|:---:|:---:|:---|
+| Mars (Olympus Ridge) | 30 W | 100 Wh | Dust attenuation |
+| Moon (Shackleton Rim) | 42 W | 110 Wh | Dense craters, sharp shadows |
+| Europa (Conamara Chaos) | 14 W | 120 Wh | Faint sunlight, high energy cost |
+| Titan (Shangri-La Dunes) | 8 W | 130 Wh | Haze, severe solar limitation |
 
 ---
 
-## 🛠️ Project Structure
+## Technologies and Tools
 
-```
-├── src/
-│   ├── types/
-│   │   └── simulation.ts       # Full simulation, terrain, energy & event types
-│   ├── simulation/
-│   │   ├── engine.ts           # State transitions, utility planner, safety manager
-│   │   ├── pathfinding.ts      # A* search & optimistic path cost estimation
-│   │   ├── solarModel.ts       # Diurnal solar cycle & flux calculations
-│   │   └── terrainGenerator.ts # Procedural map generation with seedable PRNG
-│   ├── hooks/
-│   │   └── useSimulation.ts    # React state hook & auto-step interval manager
-│   ├── utils/
-│   │   └── helpers.ts          # Formatting, math & utility helpers
-│   ├── App.tsx                 # Mission Control UI layout & components
-│   ├── index.css               # Design system, glassmorphism & Martian theme
-│   └── main.tsx                # React application entry
-├── index.html                  # HTML5 shell with meta tags & title
-├── package.json                # Dependencies and scripts
-└── tsconfig.app.json           # TypeScript configuration
-```
+| Category | Technology |
+|:---|:---|
+| Framework | React 19 |
+| Language | TypeScript 6 |
+| Build Tool | Vite 8 |
+| Pathfinding | Custom A* (TypeScript) |
+| Terrain Generation | Seeded PRNG generator |
+| Charts / Icons | Recharts, Lucide React |
+| Persistence | JSON flat-file (`missions.json`) |
+| Data Transport Simulation | CCSDS DTN (RFC 9171) |
+| Styling | Vanilla CSS (dark mode, glassmorphism) |
+| Linting | OxLint |
 
 ---
 
-## 🎮 How to Run
+## Running and Demonstrating the Project
 
-### Prerequisites
-- Node.js (v18 or higher)
-- npm
+**Prerequisites:** Node.js v18+ and npm.
 
-### 1. Install Dependencies
 ```bash
-npm install
+npm install        # install dependencies
+npm run dev        # start dev server at http://localhost:5173
+npm run build      # production build
+npm run preview    # preview the production build
 ```
 
-### 2. Start the Development Server
-```bash
-npm run dev
-```
-Open [http://localhost:5173](http://localhost:5173) in your browser.
+**Demo steps**
 
-### 3. Production Build
-```bash
-npm run build
-```
+1. Open http://localhost:5173. A Mars environment loads by default.
+2. Click **Start Mission** in the map toolbar and watch the rover explore through the fog-of-war.
+3. Watch the battery bar and Path Safety Score. The rover returns on its own when energy nears the reserve threshold.
+4. Check the Mission Telemetry Log for SAFETY and NAVIGATION events as dynamic hazards force re-routing.
+5. When the mission ends, review the Mission Debrief popup. The run is also saved to `src/database/missions.json`.
+6. To try another planet, click Moon, Europa or Titan, read the briefing, then click **Commence Expedition**.
 
 ---
 
-## 🕹️ Mission Control Features & Controls
+## Significant External Resources
 
-1. **Simulation Controls**:
-   - `Auto (Play/Pause)`: Run autonomous AI exploration loop.
-   - `Step Forward`: Step 1 action at a time to examine planner reasoning.
-   - `Speed Slider`: Adjust simulation tick rate (1× to 20×).
-   - `Reset / New Seed`: Generate new procedural Martian landscapes.
-2. **Interactive Grid**:
-   - Hover over any revealed cell to inspect coordinates, terrain type, energy cost multiplier, and resource details.
-   - Visualized path-to-base and planned waypoint trails.
-3. **Mission Telemetry**:
-   - Real-time battery bar with safe-return reserve zone indicator.
-   - Solar Array Power (SAP) gauge and current sun elevation.
-   - Samples collected, data uploaded, distance traveled, and % area mapped.
-4. **Explainable AI (XAI) Panel**:
-   - Ranks all considered candidate actions with their reward, risk, energy cost, and utility score.
-   - Highlights Safety Manager interventions and explanation strings.
-5. **Telemetry Charts**:
-   - Real-time power balance (Solar generation vs Motor/Subsystem consumption).
-   - Historical battery charge level and exploration progression curve.
+**Libraries:** React, TypeScript, Vite, Lucide React, Recharts, OxLint.
+
+**Algorithms and references:**
+- A* Search: Hart, Nilsson and Raphael (1968)
+- CCSDS Delay Tolerant Networking, RFC 9171
+- Terramechanics: Bekker and Wong soil-wheel interaction models
+- Diurnal solar cycle modelling with zenith angle
+- Partial observability and SLAM-inspired exploration concepts
+- Sakayori, G., & Ishigami, G. (2021). Energy-aware trajectory planning for planetary rovers. Advanced Robotics, 35(21–22), 1302–1316. https://doi.org/10.1080/01691864.2021.1959396
+- Topiwala, A., Inani, P., & Kathpal, A. (2018, June 10). Frontier based exploration for autonomous robot. arXiv.org. https://arxiv.org/abs/1806.03581
+- Anil, A., Lanillos, P., & Kouw, W. M. (2026, August 1). Expected free energy-based informative path planning for robotic Mars exploration. Research Portal Eindhoven University of Technology. https://research.tue.nl/en/publications/expected-free-energy-based-informative-path-planning-for-robotic-/
+---
+
+## Use of AI Tools
+
+We used **Google Antigravity** with **Claude Sonnet 4.6** and **Gemini 3.8 Flash** throughout development, mainly for:
+
+- The multi-objective utility planner and Safety Manager (`engine.ts`)
+- A* pathfinding with terrain-weighted energy costs
+- Dynamic hazard injection and path re-routing
+- The CCSDS DTN data transport simulation
+- The wheel-slip probability model
+- The planetary briefing modal, colour guides, CSS design system, mission debrief popup and JSON persistence
