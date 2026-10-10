@@ -61,7 +61,8 @@ export function formatTime(seconds: number): string {
   return `${m}m`;
 }
 
-export function formatSimTime(seconds: number): string {
+export function formatSimTime(seconds?: number): string {
+  if (typeof seconds !== 'number' || isNaN(seconds)) return '08:00';
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
   const mins = Math.floor((seconds % 3600) / 60);

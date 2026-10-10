@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   SimulationState, SimulationConfig, DEFAULT_CONFIG,
   ActionType, Direction, DIRECTION_VECTORS, TERRAIN_CONFIGS, TerrainType,
-  RoverAction,
+  RoverAction, EventCategory,
 } from '../types/simulation';
 import {
   createInitialState, simulationTick, executeManualAction, updateDecisionGoal,
@@ -222,6 +222,47 @@ export function useSimulation(initialConfig: SimulationConfig = DEFAULT_CONFIG) 
     return () => window.removeEventListener('keydown', handler);
   }, [state.isAutonomous, moveRover, manualScan, manualCollect, manualReturn]);
 
+  const confirmMostValuableLocation = useCallback((confirmed: boolean, customPos?: { x: number; y: number }) => {
+    setState(prev => {
+      if (!prev.mostValuableLocation && !customPos) return prev;
+      const targetPos = customPos || (prev.mostValuableLocation ? { x: prev.mostValuableLocation.x, y: prev.mostValuableLocation.y } : { x: Math.floor(prev.mapWidth / 2), y: Math.floor(prev.mapHeight / 2) });
+      const currentMvl = prev.mostValuableLocation || {
+        x: targetPos.x,
+        y: targetPos.y,
+        name: 'Designated Prime Science Site',
+        description: 'Designated high-priority scientific anomaly site.',
+        scientificYield: 50,
+        confirmed: false,
+        visited: false,
+      };
+
+      const updatedMvl = {
+        ...currentMvl,
+        x: targetPos.x,
+        y: targetPos.y,
+        confirmed,
+      };
+
+      const updatedEvents = [
+        ...prev.events,
+        {
+          id: `evt-${Date.now()}-mvl-${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: prev.metrics.elapsedTime,
+          category: EventCategory.DECISION,
+          description: confirmed
+            ? `MISSION DIRECTIVE: Prime Science Site designated at (${updatedMvl.x}, ${updatedMvl.y}). Rover path planning prioritizing scientific reconnaissance.`
+            : `MISSION DIRECTIVE: Prime Science Site optional exploration declined. Nominal exploration protocol engaged.`,
+        }
+      ];
+
+      return {
+        ...prev,
+        mostValuableLocation: updatedMvl,
+        events: updatedEvents,
+      };
+    });
+  }, []);
+
   return {
     state,
     config,
@@ -238,6 +279,7 @@ export function useSimulation(initialConfig: SimulationConfig = DEFAULT_CONFIG) 
     setSeed,
     setSpeed,
     toggleMode,
+    confirmMostValuableLocation,
     moveRover,
     manualScan,
     manualCollect,

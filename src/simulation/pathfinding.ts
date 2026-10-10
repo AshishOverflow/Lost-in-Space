@@ -99,6 +99,15 @@ export function findPath(
 
       let moveCost = baseMovementEnergy * (terrainCfg ? terrainCfg.movementCost : 1.0);
 
+      // Low-risk safety routing: penalize high wheel-slip and hazardous terrain
+      if (cell.terrain === TerrainType.SAND) {
+        moveCost += baseMovementEnergy * 1.5; // High wheel slip hazard penalty
+      } else if (cell.terrain === TerrainType.CRATER) {
+        moveCost += baseMovementEnergy * 1.2; // Unstable crater slope penalty
+      } else if (cell.terrain === TerrainType.GRAVEL) {
+        moveCost += baseMovementEnergy * 0.35; // Loose pebble penalty
+      }
+
       // Add uncertainty for unknown cells
       if (!cell.isRevealed || cell.terrain === TerrainType.UNKNOWN) {
         moveCost = baseMovementEnergy * TERRAIN_CONFIGS[TerrainType.UNKNOWN].movementCost * uncertaintyBuffer;

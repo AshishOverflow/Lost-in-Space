@@ -4,7 +4,8 @@
 
 import {
   TerrainType, GridCell, Position, Resource, ResourceType,
-  ScientificObjective, RESOURCE_CONFIGS, TERRAIN_CONFIGS, TerrainConfig
+  ScientificObjective, RESOURCE_CONFIGS, TERRAIN_CONFIGS, TerrainConfig,
+  MostValuableLocation, RichSampleSource
 } from '../types/simulation';
 import { SeededRandom, posKey } from '../utils/helpers';
 import { EnvironmentProperties, GeneratedEnvironment, TerrainDistribution } from './types';
@@ -149,15 +150,24 @@ export function generateEnvironment(
         occupied.add(key);
         const rtype = rng.pick(allowedTypes);
         const rc = RESOURCE_CONFIGS[rtype];
+        const isRich = i < 3;
+        const yieldMult = isRich ? +(2.2 + rng.next() * 1.5).toFixed(1) : 1.0;
+        const richName = isRich
+          ? `${properties.name} Concentrated ${rc.label} Vein`
+          : undefined;
+
         const resource: Resource = {
           id: `res-${i}`,
           type: rtype,
           position: { x: rx, y: ry },
-          value: rc.baseValue + rng.nextInt(-10, 15),
+          value: Math.round((rc.baseValue + rng.nextInt(-5, 15)) * yieldMult),
           collectionEnergy: rc.baseEnergy + rng.next() * 2,
           collectionTime: 300 + rng.nextInt(0, 300),
           discovered: false,
           collected: false,
+          isRichSource: isRich,
+          richSourceName: richName,
+          yieldMultiplier: yieldMult,
         };
 
         resources.push(resource);
@@ -173,10 +183,41 @@ export function generateEnvironment(
     }
   }
 
-  // 6. Ensure connectivity between start and objective
-  ensureConnectivity(groundTruth, roverStart, { x: objX, y: objY }, W, H, rng);
+  // 6. Generate distinct Rich Sample Sources list
+  const richSampleSources: RichSampleSource[] = resources
+    .filter(r => r.isRichSource)
+    .map(r => ({
+      id: `rich-${r.id}`,
+      name: r.richSourceName || `${properties.name} High-Yield Specimen`,
+      position: r.position,
+      resourceType: r.type,
+      yieldMultiplier: +(r.value / (RESOURCE_CONFIGS[r.type].baseValue)).toFixed(1),
+      description: `Concentrated high-density geological deposit offering enhanced scientific return.`,
+      discovered: false,
+      sampled: false,
+    }));
 
-  // 7. Create empty belief map
+  // 7. Designate Candidate Most Valuable Location
+  const mvlX = rng.nextInt(Math.floor(W * 0.4), Math.min(W - 2, Math.floor(W * 0.85)));
+  const mvlY = rng.nextInt(Math.floor(H * 0.2), Math.min(H - 2, Math.floor(H * 0.75)));
+  if (!isPassable(groundTruth[mvlY][mvlX].terrain)) {
+    groundTruth[mvlY][mvlX].terrain = TerrainType.FLAT_ROCK;
+  }
+  const mostValuableLocation: MostValuableLocation = {
+    x: mvlX,
+    y: mvlY,
+    name: `${properties.name} Prime Strata Alpha`,
+    description: `Primary planetary hotspot with exceptional isotopic and mineralogical concentration.`,
+    scientificYield: 150,
+    confirmed: false,
+    visited: false,
+  };
+
+  // 8. Ensure connectivity between start and objective
+  ensureConnectivity(groundTruth, roverStart, { x: objX, y: objY }, W, H, rng);
+  ensureConnectivity(groundTruth, roverStart, { x: mvlX, y: mvlY }, W, H, rng);
+
+  // 9. Create empty belief map
   const beliefMap: GridCell[][] = [];
   for (let y = 0; y < H; y++) {
     const row: GridCell[] = [];
@@ -203,6 +244,8 @@ export function generateEnvironment(
     solarStations,
     terrainConfigs,
     properties,
+    mostValuableLocation,
+    richSampleSources,
   };
 }
 

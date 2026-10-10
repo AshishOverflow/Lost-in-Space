@@ -5,7 +5,7 @@
 import {
   TerrainType, TerrainConfig, ResourceType, Position,
   GridCell, Resource, ScientificObjective, LightingCondition,
-  EnergyCosts
+  EnergyCosts, MostValuableLocation, RichSampleSource
 } from '../types/simulation';
 
 /** Distribution weights for procedural terrain generation */
@@ -89,4 +89,6 @@ export interface GeneratedEnvironment {
   solarStations: Position[];
   terrainConfigs: Record<TerrainType, TerrainConfig>;
   properties: EnvironmentProperties;
+  mostValuableLocation?: MostValuableLocation;
+  richSampleSources?: RichSampleSource[];
 }

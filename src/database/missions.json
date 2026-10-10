@@ -114,5 +114,353 @@
     "dynamicHazardsAdapted": 7,
     "elapsedTimeFormatted": "Sol 2, 02:15",
     "elapsedTimeSeconds": 94500
+  },
+  {
+    "missionId": "AEGIS-MSN-001",
+    "runIndex": 1,
+    "completedAt": "2026-10-10T02:02:52.824Z",
+    "environment": "Moon",
+    "status": "MISSION_SUCCESSFUL",
+    "distanceTraversed": 136,
+    "areaExploredPercent": 59.2,
+    "cellsExplored": 606,
+    "totalCells": 1024,
+    "resourcesCollectedCount": 5,
+    "resources": [
+      {
+        "type": "WATER_ICE",
+        "value": 51
+      },
+      {
+        "type": "WATER_ICE",
+        "value": 122
+      },
+      {
+        "type": "MINERAL_SAMPLE",
+        "value": 41
+      },
+      {
+        "type": "MINERAL_SAMPLE",
+        "value": 29
+      },
+      {
+        "type": "RARE_ELEMENT",
+        "value": 85
+      }
+    ],
+    "totalResourceValue": 328,
+    "biosignaturesScanned": [
+      "Shackleton Cold Trap"
+    ],
+    "solarEnergyHarvestedWh": 390.6,
+    "energyConsumedWh": 428.6,
+    "dataTransportedUnits": 150,
+    "dynamicHazardsAdapted": 5,
+    "elapsedTimeFormatted": "20:10",
+    "elapsedTimeSeconds": 72600
+  },
+  {
+    "missionId": "AEGIS-MSN-002",
+    "runIndex": 2,
+    "completedAt": "2026-10-10T02:08:41.803Z",
+    "environment": "Moon",
+    "status": "MISSION_SUCCESSFUL",
+    "distanceTraversed": 118,
+    "areaExploredPercent": 53.2,
+    "cellsExplored": 545,
+    "totalCells": 1024,
+    "resourcesCollectedCount": 3,
+    "resources": [
+      {
+        "type": "WATER_ICE",
+        "value": 51
+      },
+      {
+        "type": "WATER_ICE",
+        "value": 122
+      },
+      {
+        "type": "MINERAL_SAMPLE",
+        "value": 41
+      }
+    ],
+    "totalResourceValue": 214,
+    "biosignaturesScanned": [
+      "Shackleton Cold Trap"
+    ],
+    "solarEnergyHarvestedWh": 321.9,
+    "energyConsumedWh": 355.9,
+    "dataTransportedUnits": 150,
+    "dynamicHazardsAdapted": 4,
+    "elapsedTimeFormatted": "18:15",
+    "elapsedTimeSeconds": 65700
+  },
+  {
+    "missionId": "AEGIS-MSN-003",
+    "runIndex": 3,
+    "completedAt": "2026-10-10T02:09:43.751Z",
+    "environment": "Moon",
+    "status": "MISSION_SUCCESSFUL",
+    "distanceTraversed": 144,
+    "areaExploredPercent": 58.1,
+    "cellsExplored": 595,
+    "totalCells": 1024,
+    "resourcesCollectedCount": 3,
+    "resources": [
+      {
+        "type": "WATER_ICE",
+        "value": 51
+      },
+      {
+        "type": "WATER_ICE",
+        "value": 122
+      },
+      {
+        "type": "MINERAL_SAMPLE",
+        "value": 41
+      }
+    ],
+    "totalResourceValue": 214,
+    "biosignaturesScanned": [
+      "Shackleton Cold Trap"
+    ],
+    "solarEnergyHarvestedWh": 410.6,
+    "energyConsumedWh": 440.5,
+    "dataTransportedUnits": 150,
+    "dynamicHazardsAdapted": 5,
+    "elapsedTimeFormatted": "20:45",
+    "elapsedTimeSeconds": 74700
+  },
+  {
+    "missionId": "AEGIS-MSN-001",
+    "runIndex": 1,
+    "completedAt": "2026-10-10T03:14:00.695Z",
+    "environment": "Moon",
+    "status": "MISSION_SUCCESSFUL",
+    "distanceTraversed": 118,
+    "areaExploredPercent": 53.2,
+    "cellsExplored": 545,
+    "totalCells": 1024,
+    "resourcesCollectedCount": 3,
+    "resources": [
+      {
+        "type": "WATER_ICE",
+        "value": 51
+      },
+      {
+        "type": "WATER_ICE",
+        "value": 122
+      },
+      {
+        "type": "MINERAL_SAMPLE",
+        "value": 41
+      }
+    ],
+    "totalResourceValue": 214,
+    "biosignaturesScanned": [
+      "Shackleton Cold Trap"
+    ],
+    "solarEnergyHarvestedWh": 321.9,
+    "energyConsumedWh": 355.9,
+    "dataTransportedUnits": 150,
+    "dynamicHazardsAdapted": 4,
+    "elapsedTimeFormatted": "18:15",
+    "elapsedTimeSeconds": 65700
+  },
+  {
+    "missionId": "AEGIS-MSN-002",
+    "runIndex": 2,
+    "completedAt": "2026-10-10T03:15:06.146Z",
+    "environment": "Moon",
+    "status": "MISSION_SUCCESSFUL",
+    "distanceTraversed": 136,
+    "areaExploredPercent": 59.2,
+    "cellsExplored": 606,
+    "totalCells": 1024,
+    "resourcesCollectedCount": 5,
+    "resources": [
+      {
+        "type": "WATER_ICE",
+        "value": 51
+      },
+      {
+        "type": "WATER_ICE",
+        "value": 122
+      },
+      {
+        "type": "MINERAL_SAMPLE",
+        "value": 41
+      },
+      {
+        "type": "MINERAL_SAMPLE",
+        "value": 29
+      },
+      {
+        "type": "RARE_ELEMENT",
+        "value": 85
+      }
+    ],
+    "totalResourceValue": 328,
+    "biosignaturesScanned": [
+      "Shackleton Cold Trap"
+    ],
+    "solarEnergyHarvestedWh": 390.6,
+    "energyConsumedWh": 428.6,
+    "dataTransportedUnits": 150,
+    "dynamicHazardsAdapted": 5,
+    "elapsedTimeFormatted": "20:10",
+    "elapsedTimeSeconds": 72600
+  },
+  {
+    "missionId": "AEGIS-MSN-001",
+    "runIndex": 1,
+    "completedAt": "2026-10-10T03:32:43.612Z",
+    "environment": "Moon",
+    "status": "MISSION_SUCCESSFUL",
+    "distanceTraversed": 118,
+    "areaExploredPercent": 53.2,
+    "cellsExplored": 545,
+    "totalCells": 1024,
+    "resourcesCollectedCount": 3,
+    "resources": [
+      {
+        "type": "WATER_ICE",
+        "value": 51
+      },
+      {
+        "type": "WATER_ICE",
+        "value": 122
+      },
+      {
+        "type": "MINERAL_SAMPLE",
+        "value": 41
+      }
+    ],
+    "totalResourceValue": 214,
+    "biosignaturesScanned": [
+      "Shackleton Cold Trap"
+    ],
+    "solarEnergyHarvestedWh": 321.9,
+    "energyConsumedWh": 355.9,
+    "dataTransportedUnits": 150,
+    "dynamicHazardsAdapted": 4,
+    "elapsedTimeFormatted": "18:15",
+    "elapsedTimeSeconds": 65700
+  },
+  {
+    "missionId": "AEGIS-MSN-002",
+    "runIndex": 2,
+    "completedAt": "2026-10-10T03:36:15.714Z",
+    "environment": "Moon",
+    "status": "MISSION_SUCCESSFUL",
+    "distanceTraversed": 232,
+    "areaExploredPercent": 69.4,
+    "cellsExplored": 711,
+    "totalCells": 1024,
+    "resourcesCollectedCount": 3,
+    "resources": [
+      {
+        "type": "WATER_ICE",
+        "value": 51
+      },
+      {
+        "type": "WATER_ICE",
+        "value": 122
+      },
+      {
+        "type": "RARE_ELEMENT",
+        "value": 85
+      }
+    ],
+    "totalResourceValue": 258,
+    "biosignaturesScanned": [
+      "Shackleton Cold Trap"
+    ],
+    "solarEnergyHarvestedWh": 634.7,
+    "energyConsumedWh": 686,
+    "dataTransportedUnits": 170,
+    "dynamicHazardsAdapted": 7,
+    "elapsedTimeFormatted": "Sol 2, 06:10",
+    "elapsedTimeSeconds": 108600
+  },
+  {
+    "missionId": "AEGIS-MSN-001",
+    "runIndex": 1,
+    "completedAt": "2026-10-10T03:59:26.212Z",
+    "environment": "Moon",
+    "status": "MISSION_SUCCESSFUL",
+    "distanceTraversed": 256,
+    "areaExploredPercent": 69.4,
+    "cellsExplored": 711,
+    "totalCells": 1024,
+    "resourcesCollectedCount": 3,
+    "resources": [
+      {
+        "type": "WATER_ICE",
+        "value": 62
+      },
+      {
+        "type": "MINERAL_SAMPLE",
+        "value": 106
+      },
+      {
+        "type": "RARE_ELEMENT",
+        "value": 79
+      }
+    ],
+    "totalResourceValue": 247,
+    "biosignaturesScanned": [
+      "Shackleton Cold Trap"
+    ],
+    "solarEnergyHarvestedWh": 796.4,
+    "energyConsumedWh": 781.4,
+    "dataTransportedUnits": 170,
+    "dynamicHazardsAdapted": 10,
+    "elapsedTimeFormatted": "Sol 2, 08:50",
+    "elapsedTimeSeconds": 118200
+  },
+  {
+    "missionId": "AEGIS-MSN-002",
+    "runIndex": 2,
+    "completedAt": "2026-10-10T04:03:25.022Z",
+    "environment": "Moon",
+    "status": "MISSION_SUCCESSFUL",
+    "distanceTraversed": 134,
+    "areaExploredPercent": 51.4,
+    "cellsExplored": 526,
+    "totalCells": 1024,
+    "resourcesCollectedCount": 5,
+    "resources": [
+      {
+        "type": "RARE_ELEMENT",
+        "value": 69
+      },
+      {
+        "type": "WATER_ICE",
+        "value": 58
+      },
+      {
+        "type": "MINERAL_SAMPLE",
+        "value": 77
+      },
+      {
+        "type": "WATER_ICE",
+        "value": 65
+      },
+      {
+        "type": "WATER_ICE",
+        "value": 59
+      }
+    ],
+    "totalResourceValue": 328,
+    "biosignaturesScanned": [
+      "Shackleton Cold Trap"
+    ],
+    "solarEnergyHarvestedWh": 368.3,
+    "energyConsumedWh": 410,
+    "dataTransportedUnits": 200,
+    "dynamicHazardsAdapted": 5,
+    "elapsedTimeFormatted": "19:55",
+    "elapsedTimeSeconds": 71700
   }
 ]

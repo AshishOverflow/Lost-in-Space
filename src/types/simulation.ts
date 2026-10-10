@@ -62,6 +62,27 @@ export interface DynamicHazard {
   tick: number;
 }
 
+export interface MostValuableLocation {
+  x: number;
+  y: number;
+  name: string;
+  description: string;
+  scientificYield: number;
+  confirmed: boolean;
+  visited: boolean;
+}
+
+export interface RichSampleSource {
+  id: string;
+  name: string;
+  position: Position;
+  resourceType: ResourceType;
+  yieldMultiplier: number;
+  description: string;
+  discovered: boolean;
+  sampled: boolean;
+}
+
 // --- Resources ---
 export enum ResourceType {
   MINERAL_SAMPLE = 'MINERAL_SAMPLE',
@@ -79,6 +100,9 @@ export interface Resource {
   collectionTime: number;      // seconds
   discovered: boolean;
   collected: boolean;
+  isRichSource?: boolean;
+  richSourceName?: string;
+  yieldMultiplier?: number;
 }
 
 export const RESOURCE_CONFIGS: Record<ResourceType, { label: string; color: string; symbol: string; baseValue: number; baseEnergy: number }> = {
@@ -297,6 +321,13 @@ export interface SimulationState {
   isCharging: boolean;
   lastSolarRechargeTick?: number;
   dynamicHazards?: DynamicHazard[];
+
+  // Science & Safety Enhancements
+  mostValuableLocation?: MostValuableLocation;
+  richSampleSources?: RichSampleSource[];
+  pathSafetyScore?: number;          // 0..100
+  wheelSlipProbability?: number;     // 0..1 live slip probability
+  predictedPathSlip?: number;        // 0..1 average along planned route
 
   // Energy
   solar: SolarState;

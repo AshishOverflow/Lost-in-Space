@@ -111,6 +111,12 @@ export function createInitialState(
     secureNetwork: createInitialSecureChannel(),
     dynamicHazards: [],
 
+    mostValuableLocation: env.mostValuableLocation,
+    richSampleSources: env.richSampleSources ?? [],
+    pathSafetyScore: 100,
+    wheelSlipProbability: 0.03,
+    predictedPathSlip: 0.03,
+
     decision: {
       currentGoal: 'Docked at Home Base — Awaiting launch',
       currentAction: 'Idle',
@@ -305,6 +311,32 @@ export function simulationTick(state: SimulationState): SimulationState {
   if (s.isAutonomous && !s.missionComplete && !s.missionFailed) {
     executeAutonomousAction(s);
   }
+
+  // 8b. Most Valuable Location Visit Check
+  if (s.mostValuableLocation && !s.mostValuableLocation.visited) {
+    if (s.roverPosition.x === s.mostValuableLocation.x && s.roverPosition.y === s.mostValuableLocation.y) {
+      s.mostValuableLocation.visited = true;
+      s.deliveredData += s.mostValuableLocation.scientificYield;
+      addEvent(
+        s,
+        EventCategory.SCIENCE,
+        `⭐ High-Value Priority Site Visited: ${s.mostValuableLocation.name} at (${s.mostValuableLocation.x}, ${s.mostValuableLocation.y})! Secured +${s.mostValuableLocation.scientificYield} scientific data units.`
+      );
+    }
+  }
+
+  // 8c. Terramechanics: Live Wheel Slip & Path Safety Score
+  const currentTile = s.beliefMap[s.roverPosition.y]?.[s.roverPosition.x];
+  s.wheelSlipProbability = calculateWheelSlip(
+    currentTile?.terrain || TerrainType.FLAT_ROCK,
+    s.solar.lightingCondition,
+    s.environmentProperties
+  );
+  s.pathSafetyScore = calculatePathSafetyScore(
+    s.roverPath,
+    s.beliefMap,
+    s.solar.lightingCondition
+  );
 
   // 9. Dynamic Environmental Obstacle Adaptation
   triggerDynamicEnvironmentalHazards(s);
@@ -944,7 +976,14 @@ function revealCells(s: SimulationState, center: Position, radius: number): numb
           actual.resource.discovered = true;
           const rObj = s.resources.find(r => r.id === actual.resource!.id);
           if (rObj) rObj.discovered = true;
-          addEvent(s, EventCategory.RESOURCE, `Detected ${RESOURCE_CONFIGS[actual.resource.type].label} at (${nx}, ${ny})`);
+
+          if (actual.resource.isRichSource) {
+            const richSource = s.richSampleSources?.find(rs => rs.position.x === nx && rs.position.y === ny);
+            if (richSource) richSource.discovered = true;
+            addEvent(s, EventCategory.DISCOVERY, `💎 Rich Sample Source Discovered: ${actual.resource.richSourceName || 'High-Yield Deposit'} at (${nx}, ${ny}) (Value: ${actual.resource.value} units)`);
+          } else {
+            addEvent(s, EventCategory.RESOURCE, `Detected ${RESOURCE_CONFIGS[actual.resource.type].label} at (${nx}, ${ny})`);
+          }
         }
 
         if (actual.hasObjective && actual.objective && !actual.objective.discovered) {
@@ -984,7 +1023,7 @@ function updateMetrics(s: SimulationState) {
     totalEnergyConsumed: s.battery.totalConsumed,
     totalEnergyHarvested: s.battery.totalHarvested,
     discoveredCells: explored,
-    mapExploredPercent: explored / s.metrics.totalCells,
+    mapExploredPercent: (explored / Math.max(1, s.metrics.totalCells)) * 100,
   };
 }
 
@@ -999,14 +1038,60 @@ function recordHistory(s: SimulationState) {
   });
 }
 
-function addEvent(s: SimulationState, category: EventCategory, description: string, energyValue?: number) {
+// ============================================================
+// Terramechanics: Wheel Slip & Path Safety Calculations
+// ============================================================
+
+export function calculateWheelSlip(
+  terrain: TerrainType,
+  lighting: LightingCondition,
+  envProps?: any
+): number {
+  let baseSlip = 0.03;
+  switch (terrain) {
+    case TerrainType.FLAT_ROCK: baseSlip = 0.03; break;
+    case TerrainType.ROCKY: baseSlip = 0.09; break;
+    case TerrainType.GRAVEL: baseSlip = 0.22; break;
+    case TerrainType.SAND: baseSlip = 0.44; break;
+    case TerrainType.CRATER: baseSlip = 0.36; break;
+    case TerrainType.BOULDER: baseSlip = 1.0; break;
+    default: baseSlip = 0.12; break;
+  }
+  if (lighting === LightingCondition.DUST_STORM) baseSlip += 0.12;
+  if (envProps?.hazardLevel === 'HIGH') baseSlip += 0.05;
+  return Math.min(0.95, Math.max(0.01, +baseSlip.toFixed(2)));
+}
+
+export function calculatePathSafetyScore(
+  path: Position[],
+  beliefMap: GridCell[][],
+  lighting: LightingCondition
+): number {
+  if (!path || path.length === 0) return 100;
+  let totalSlip = 0;
+  for (const pos of path) {
+    const cell = beliefMap[pos.y]?.[pos.x];
+    const slip = calculateWheelSlip(cell?.terrain || TerrainType.FLAT_ROCK, lighting);
+    totalSlip += slip;
+  }
+  const avgSlip = totalSlip / path.length;
+  return Math.max(15, Math.min(100, Math.round(100 - avgSlip * 115)));
+}
+
+let eventUniqueCounter = 0;
+export function addEvent(s: SimulationState, category: EventCategory, description: string, energyValue?: number) {
+  eventUniqueCounter++;
+  const id = `evt-${Date.now()}-${eventUniqueCounter}-${Math.random().toString(36).slice(2, 6)}`;
   s.events.push({
-    id: `evt-${s.events.length}`,
+    id,
     timestamp: s.metrics.elapsedTime,
     category,
     description,
     energyValue,
   });
+  if (s.events.length > 300) {
+    s.events.shift();
+  }
 }
 
 function checkMissionCompletion(s: SimulationState) {
@@ -1203,6 +1288,35 @@ export function updateDecisionGoal(s: SimulationState) {
       }
     } else {
       s.unreachableTargets.push(posKey(unscannedObj.position.x, unscannedObj.position.y));
+    }
+  }
+
+  // 6b. User-confirmed Most Valuable Location (Optional Priority Exploration)
+  if (s.mostValuableLocation && s.mostValuableLocation.confirmed && !s.mostValuableLocation.visited) {
+    const mvlPos = { x: s.mostValuableLocation.x, y: s.mostValuableLocation.y };
+    if (!s.unreachableTargets.includes(posKey(mvlPos.x, mvlPos.y))) {
+      const pathRes = findPath(
+        s.beliefMap, s.roverPosition, mvlPos,
+        s.energyCosts.baseMovement, 1.1,
+        s.terrainConfigs, s.visitedCount, 1.0
+      );
+      if (pathRes) {
+        const havenFromMvl = findNearestRechargeHaven(
+          s.beliefMap, mvlPos, s.homeBase, s.solarStations,
+          s.energyCosts.baseMovement, s.uncertaintyBuffer, s.terrainConfigs
+        );
+        const returnCost = havenFromMvl ? havenFromMvl.energyCost : havenEnergy;
+        // Verify battery reserve: sufficient to visit MVL, return to safety, and keep reserve
+        if (s.battery.currentEnergy >= pathRes.energyCost + returnCost + s.safetyReserve * 1.1) {
+          s.decision.currentGoal = `Survey Priority Site (${s.mostValuableLocation.name})`;
+          s.roverTarget = mvlPos;
+          s.roverMode = RoverMode.NAVIGATING_TO_OBJECTIVE;
+          s.roverPath = pathRes.path;
+          return;
+        }
+      } else {
+        s.unreachableTargets.push(posKey(mvlPos.x, mvlPos.y));
+      }
     }
   }
 

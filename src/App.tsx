@@ -11,7 +11,7 @@ import {
   Navigation, ScanLine, Pickaxe, ArrowLeft,
   Gauge, Radio, Brain, Cpu, Rocket, Footprints,
   Plus, Minus, Crosshair, Award, CheckCircle2, CheckSquare, Square, HelpCircle, Home, Globe,
-  Shield, Download, Database,
+  Shield, Download, Database, Palette,
 } from 'lucide-react';
 import { useSimulation } from './hooks/useSimulation';
 import {
@@ -21,7 +21,79 @@ import {
 } from './types/simulation';
 import { formatEnergy, formatPower, formatPercent, formatSimTime, manhattanDist } from './utils/helpers';
 import { RoverMissionDatabase } from './database/roverDatabase';
+import { MAPS_REGISTRY, DEFAULT_ENVIRONMENT, EnvironmentProperties } from './environments/maps';
 import './index.css';
+
+// ===================== ENVIRONMENT-SPECIFIC COLOR GUIDES =====================
+
+const ENVIRONMENT_COLOR_GUIDES: Record<string, {
+  name: string;
+  tagline: string;
+  items: Array<{
+    color: string;
+    label: string;
+    desc: string;
+    border?: string;
+    glow?: string;
+  }>;
+}> = {
+  mars: {
+    name: 'Mars (Olympus Ridge)',
+    tagline: 'Ferric Regolith & Basalt Formations',
+    items: [
+      { color: '#d97706', glow: 'rgba(217, 119, 6, 0.4)', label: 'Rust Dunes', desc: 'Loose sand dunes (elevated wheel slip)' },
+      { color: '#785338', glow: 'rgba(120, 83, 56, 0.4)', label: 'Ferric Gravel', desc: 'Oxidized regolith scree (moderate traction)' },
+      { color: '#252d3d', border: '#475569', label: 'Basalt Bedrock', desc: 'Solid bedrock (lowest movement energy)' },
+      { color: '#2a4365', glow: 'rgba(42, 67, 101, 0.4)', label: 'Rough Crag', desc: 'Sharp basalt boulders (high traversal cost)' },
+      { color: '#6b21a8', glow: 'rgba(107, 33, 168, 0.4)', label: 'Caldera Scarp', desc: 'Steep volcanic scarp (high climb energy)' },
+      { color: '#0b0f19', border: '#334155', label: 'Craters / Monoliths', desc: 'Impact craters & monoliths (impassable)' },
+      { color: '#10b981', glow: 'rgba(16, 185, 129, 0.4)', label: 'Rare Minerals', desc: 'Geological specimens & science deposits' },
+      { color: '#38bdf8', glow: 'rgba(56, 189, 248, 0.4)', label: 'Aegis Hub / Comm', desc: 'Base camp, relay link & Olympus Ridge' },
+    ],
+  },
+  lunar: {
+    name: 'Moon (Shackleton Rim)',
+    tagline: 'Deep Vacuum Polar Prospecting',
+    items: [
+      { color: '#64748b', glow: 'rgba(100, 116, 139, 0.4)', label: 'Lunar Dust Bed', desc: 'Powdered regolith (high wheel slip risk)' },
+      { color: '#94a3b8', glow: 'rgba(148, 163, 184, 0.4)', label: 'Highland Rimrock', desc: 'Fractured anorthosite (rough terrain)' },
+      { color: '#2a2f3a', border: '#475569', label: 'Basalt Regolith', desc: 'Smooth mare basalt (nominal movement)' },
+      { color: '#475569', border: '#64748b', label: 'Anorthosite Scree', desc: 'Polar ejecta gravel (intermediate traction)' },
+      { color: '#334155', border: '#475569', label: 'Crater Escarpment', desc: 'Steep rim slopes (elevated climb cost)' },
+      { color: '#020617', border: '#1e293b', label: 'Shadowed Abyss', desc: 'Cryogenic shadowed craters (impassable)' },
+      { color: '#38bdf8', glow: 'rgba(56, 189, 248, 0.4)', label: 'Water-Ice / Outpost', desc: 'Primordial ice traps & Artemis base' },
+      { color: '#fbbf24', glow: 'rgba(251, 191, 36, 0.4)', label: 'Eternal Sunlight', desc: 'High-flux solar rim charging points' },
+    ],
+  },
+  europa: {
+    name: 'Europa (Conamara Chaos)',
+    tagline: 'Subsurface Ocean Cryo-Survey',
+    items: [
+      { color: '#38bdf8', glow: 'rgba(56, 189, 248, 0.4)', label: 'Cryo-Snow Drift', desc: 'Fine frost snow (moderate wheel slip)' },
+      { color: '#0284c7', glow: 'rgba(2, 132, 199, 0.4)', label: 'Frost Granules', desc: 'Granular ice scree (stable traction)' },
+      { color: '#0369a1', glow: 'rgba(3, 105, 161, 0.4)', label: 'Glacial Sheet', desc: 'Solid ice plateaus (lowest movement energy)' },
+      { color: '#6366f1', glow: 'rgba(99, 102, 241, 0.4)', label: 'Fractured Ice', desc: 'Rafted chaos blocks (elevated transit cost)' },
+      { color: '#4f46e5', glow: 'rgba(79, 70, 229, 0.4)', label: 'Pressure Ridges', desc: 'Sastrugi ice ridges (steep barrier)' },
+      { color: '#020617', border: '#1e1b4b', label: 'Cryo-Chasms', desc: 'Deep crevasses & ice spires (impassable)' },
+      { color: '#10b981', glow: 'rgba(16, 185, 129, 0.4)', label: 'Saline Minerals', desc: 'Subsurface ocean salts & biosigns' },
+      { color: '#38bdf8', glow: 'rgba(56, 189, 248, 0.4)', label: 'Hydrothermal Vent', desc: 'Cryo-vent plume & expedition hub' },
+    ],
+  },
+  titan: {
+    name: 'Titan (Shangri-La Dunes)',
+    tagline: 'Dense Atmosphere Tholin Exploration',
+    items: [
+      { color: '#b45309', glow: 'rgba(180, 83, 9, 0.4)', label: 'Hydrocarbon Dune', desc: 'Deep tholin sands (severe wheel slip)' },
+      { color: '#78350f', glow: 'rgba(120, 53, 15, 0.4)', label: 'Tholin Shingle', desc: 'Organic pebble beds (moderate transit cost)' },
+      { color: '#451a03', border: '#78350f', label: 'Organic Bedrock', desc: 'Compressed bedrock (optimal travel path)' },
+      { color: '#92400e', glow: 'rgba(146, 64, 14, 0.4)', label: 'Bitumen Crag', desc: 'Tar-rich rough rock (high energy cost)' },
+      { color: '#b91c1c', glow: 'rgba(185, 28, 28, 0.4)', label: 'Methane Escarp', desc: 'Steep riverbank deltas (high climb cost)' },
+      { color: '#0c0a09', border: '#292524', label: 'Methane Sinkholes', desc: 'Liquid sinkholes & water-ice rocks (impassable)' },
+      { color: '#10b981', glow: 'rgba(16, 185, 129, 0.4)', label: 'Fluvial Sediments', desc: 'Methane delta channels & organics' },
+      { color: '#f59e0b', glow: 'rgba(245, 158, 11, 0.4)', label: 'Dragonfly Base', desc: 'Tholin navigation hub & solar arrays' },
+    ],
+  },
+};
 
 // ===================== HELPERS =====================
 
@@ -283,16 +355,23 @@ function CircularMap({
               let content = null;
               if (revealed && beliefCell.hasResource && beliefCell.resource && !beliefCell.resource.collected) {
                 const rc = RESOURCE_CONFIGS[beliefCell.resource.type];
+                const isRich = beliefCell.resource.isRichSource;
                 content = (
                   <span
                     className="map-cell__resource"
                     style={{
+                      position: 'relative',
                       color: rc.color,
-                      filter: `drop-shadow(0 0 5px ${rc.color})`,
+                      filter: isRich ? `drop-shadow(0 0 6px ${rc.color})` : `drop-shadow(0 0 3px ${rc.color})`,
                       fontWeight: 'bold',
-                      fontSize: 11,
+                      fontSize: isRich ? 13 : 11,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}
+                    title={isRich ? `Rich Source: ${beliefCell.resource.richSourceName || 'High-Yield Deposit'} (${beliefCell.resource.yieldMultiplier || 2.5}x yield)` : undefined}
                   >
+                    {isRich && <div className="rich-source-halo" />}
                     {rc.symbol}
                   </span>
                 );
@@ -361,6 +440,28 @@ function CircularMap({
               <div className="solar-station-label">SOLAR</div>
             </div>
           ))}
+
+          {/* Dedicated Most Valuable Location (MVL) Marker */}
+          {state.mostValuableLocation && !state.mostValuableLocation.visited && (
+            <div
+              className="mvl-marker"
+              style={{
+                left: state.mostValuableLocation.x * CELL_SIZE,
+                top: state.mostValuableLocation.y * CELL_SIZE,
+                width: CELL_SIZE,
+                height: CELL_SIZE,
+              }}
+              title={`Most Valuable Location: ${state.mostValuableLocation.name} (+${state.mostValuableLocation.scientificYield} Science)`}
+            >
+              <div className="mvl-marker-beacon" />
+              <div className="mvl-marker-icon">
+                <Target size={11} color="#f59e0b" />
+              </div>
+              <div className="mvl-marker-label">
+                {state.mostValuableLocation.confirmed ? 'PRIME MVL' : 'MVL'}
+              </div>
+            </div>
+          )}
 
           {/* Continuous Vector Trajectory & Trail SVG */}
           <svg
@@ -510,10 +611,32 @@ function App() {
   const [hoveredCell, setHoveredCell] = useState<{ x: number; y: number; screenX: number; screenY: number } | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [showMissionSummaryModal, setShowMissionSummaryModal] = useState(false);
+  const [showMvlPrompt, setShowMvlPrompt] = useState(true);
+  const [planetBriefingEnv, setPlanetBriefingEnv] = useState<EnvironmentProperties | null>(null);
+  const prevEnvId = useRef(state.environmentId);
   const prevMissionComplete = useRef(false);
   const seenEventRef = useRef<string | null>(null);
   const seenFailRef = useRef(false);
   const lowBatteryRef = useRef(false);
+
+  const handleSelectMap = (mapId: string) => {
+    if (sim.currentMapId === mapId) return;
+    sim.switchMap(mapId);
+    const targetEnv = MAPS_REGISTRY[mapId] || DEFAULT_ENVIRONMENT;
+    setPlanetBriefingEnv(targetEnv);
+  };
+
+  useEffect(() => {
+    if (prevEnvId.current !== state.environmentId) {
+      const isInitialMount = !prevEnvId.current;
+      prevEnvId.current = state.environmentId;
+      setShowMvlPrompt(true);
+      if (!isInitialMount && state.environmentId) {
+        const targetEnv = MAPS_REGISTRY[state.environmentId] || DEFAULT_ENVIRONMENT;
+        setPlanetBriefingEnv(targetEnv);
+      }
+    }
+  }, [state.environmentId]);
 
   useEffect(() => {
     if (state.missionComplete && !prevMissionComplete.current) {
@@ -529,11 +652,17 @@ function App() {
   const batteryPercent = state.battery.currentEnergy / state.battery.capacity;
   const reservePercent = (state.safetyReserve + state.decision.estimatedReturnEnergy) / state.battery.capacity;
 
+  const toastTimerRef = useRef<number | null>(null);
+
   const pushToast = useCallback((toast: Omit<ToastItem, 'id'>) => {
     const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    setToasts(prev => [{ ...toast, id }, ...prev].slice(0, 4));
-    window.setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
+    // Only ONE safety alert visible at once; consecutive alerts cleanly overlap in the exact same spot
+    setToasts([{ ...toast, id }]);
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => {
+      setToasts([]);
     }, 7000);
   }, []);
 
@@ -595,16 +724,16 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* Toast Notifications */}
+      {/* Toast Notifications (Bottom Left, Single Alert View, Overlapping) */}
       <div className="toast-stack">
-        {toasts.map(toast => (
+        {toasts.slice(0, 1).map(toast => (
           <div key={toast.id} className={`error-toast ${toast.level === 'warn' ? 'error-toast--warn' : ''}`}>
             <div className="error-toast__icon"><AlertTriangle size={14} /></div>
             <div className="error-toast__body">
               <div className="error-toast__title">{toast.title}</div>
               <div className="error-toast__message">{toast.message}</div>
             </div>
-            <button className="error-toast__close" onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))} aria-label="Dismiss">
+            <button className="error-toast__close" onClick={() => setToasts([])} aria-label="Dismiss">
               <X size={14} />
             </button>
           </div>
@@ -623,7 +752,7 @@ function App() {
                 <button
                   key={m.id}
                   className={`btn ${sim.currentMapId === m.id ? 'btn--active' : ''}`}
-                  onClick={() => sim.switchMap(m.id)}
+                  onClick={() => handleSelectMap(m.id)}
                   title={m.subtitle}
                 >
                   <Globe size={12} /> {m.name}
@@ -649,6 +778,41 @@ function App() {
           </div>
         </div>
         <div className="mission-header__right">
+          {/* Live Path Safety Score */}
+          <div
+            className={`safety-metric-pill ${(state.pathSafetyScore ?? 100) >= 80 ? 'safety-metric-pill--high' : (state.pathSafetyScore ?? 100) >= 50 ? 'safety-metric-pill--medium' : 'safety-metric-pill--low'}`}
+            title="Live Path Safety Score calculated from terrain hazards and terramechanics (A* path minimizes high-risk sand/craters)"
+          >
+            <Shield size={11} /> Path Safety {state.pathSafetyScore ?? 100}%
+          </div>
+
+          {/* Live Wheel Slip Probability */}
+          <div
+            className="safety-metric-pill"
+            title="Live Wheel Slip Probability calculated from terrain surface and atmospheric conditions"
+          >
+            <Gauge size={11} /> Wheel Slip {((state.wheelSlipProbability || 0.03) * 100).toFixed(1)}%
+          </div>
+
+          {/* Most Valuable Location Status & Prompt Trigger */}
+          {state.mostValuableLocation && (
+            <button
+              className="btn btn--sm"
+              style={{
+                fontSize: 10,
+                height: 22,
+                padding: '0 8px',
+                background: state.mostValuableLocation.confirmed ? 'rgba(245, 158, 11, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                borderColor: state.mostValuableLocation.confirmed ? 'rgba(245, 158, 11, 0.4)' : 'rgba(255, 255, 255, 0.12)',
+                color: state.mostValuableLocation.confirmed ? '#f59e0b' : '#94a3b8',
+              }}
+              onClick={() => setShowMvlPrompt(true)}
+              title="Inspect or configure Prime Most Valuable Location"
+            >
+              <Target size={11} /> MVL: {state.mostValuableLocation.visited ? 'Visited' : state.mostValuableLocation.confirmed ? 'Designated' : 'Unconfirmed'}
+            </button>
+          )}
+
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)' }}>
             <Clock size={12} style={{ verticalAlign: -1, marginRight: 4 }} />
             {formatSimTime(state.metrics.elapsedTime)}
@@ -666,16 +830,15 @@ function App() {
                 fontSize: 11,
                 padding: '3px 10px',
                 height: 24,
-                background: '#10b981',
-                color: '#030712',
-                fontWeight: 700,
-                border: 'none',
-                boxShadow: '0 0 10px rgba(16, 185, 129, 0.5)',
+                background: 'rgba(255, 255, 255, 0.12)',
+                color: '#f8fafc',
+                fontWeight: 600,
+                border: '1px solid rgba(255, 255, 255, 0.2)',
                 cursor: 'pointer',
               }}
               onClick={() => setShowMissionSummaryModal(true)}
             >
-              <Award size={12} /> Mission Summary
+              <Award size={12} /> Mission Debrief
             </button>
           )}
         </div>
@@ -712,7 +875,7 @@ function App() {
               </span>
             </div>
 
-            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '290px', overflowY: 'auto', paddingRight: 2 }}>
+            <div style={{ marginTop: 5, display: 'flex', flexDirection: 'column', gap: 4, maxHeight: '125px', overflowY: 'auto', paddingRight: 2 }}>
               {state.resources.map(res => {
                 const isCollected = state.collectedResources.some(c => c.id === res.id) || res.collected;
                 const isDiscovered = res.discovered;
@@ -721,19 +884,24 @@ function App() {
                   <div
                     key={res.id}
                     className={`operational-card ${isCollected ? 'operational-card--collected' : ''}`}
-                    style={{ padding: '8px 10px' }}
+                    style={{ padding: '5px 8px' }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 600, fontSize: 11, color: isCollected ? 'var(--green-400)' : 'var(--text-primary)' }}>
+                      <span style={{ fontWeight: 600, fontSize: 10, color: isCollected ? 'var(--green-400)' : 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                         {config ? config.label : res.type.replace(/_/g, ' ')}
+                        {res.isRichSource && (
+                          <span style={{ fontSize: 8, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: 3, padding: '0 3px' }}>
+                            💎 RICH ({res.yieldMultiplier || 2.5}x)
+                          </span>
+                        )}
                       </span>
-                      <span className={`operational-badge ${isCollected ? 'operational-badge--emerald' : isDiscovered ? 'operational-badge--cyan' : 'operational-badge--slate'}`}>
+                      <span className={`operational-badge ${isCollected ? 'operational-badge--emerald' : isDiscovered ? 'operational-badge--cyan' : 'operational-badge--slate'}`} style={{ fontSize: 9, padding: '1px 5px' }}>
                         {isCollected ? '✓ COLLECTED' : isDiscovered ? `AT (${res.position.x}, ${res.position.y})` : 'UNEXPLORED'}
                       </span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)' }}>
-                      <span>Value: +{res.value} pts</span>
-                      <span>Extraction: {res.collectionEnergy.toFixed(1)} Wh</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--text-muted)', marginTop: 1 }}>
+                      <span>Value: +{res.value} pts {res.richSourceName ? `(${res.richSourceName})` : ''}</span>
+                      <span>{res.collectionEnergy.toFixed(1)} Wh</span>
                     </div>
                   </div>
                 );
@@ -800,6 +968,48 @@ function App() {
               </div>
             </div>
           </div>
+
+          {/* 3. Dynamic Environment Color Guide */}
+          {(() => {
+            const envKey = (sim.currentMapId || state.environmentId || 'mars').toLowerCase();
+            const currentGuide = ENVIRONMENT_COLOR_GUIDES[envKey] || ENVIRONMENT_COLOR_GUIDES['mars'];
+            return (
+              <div className="panel-section color-guide-section" style={{ padding: '10px 12px' }}>
+                <div className="panel-section__title" style={{ color: '#38bdf8', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <Palette size={12} /> {currentGuide.name.split(' ')[0]} Color Guide
+                  </span>
+                  <span style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>
+                    {state.environmentName || 'Surface'} Key
+                  </span>
+                </div>
+                <div style={{ fontSize: 9.5, color: 'var(--text-dim)', marginBottom: 6, lineHeight: 1.25 }}>
+                  {currentGuide.tagline}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 180, overflowY: 'auto' }}>
+                  {currentGuide.items.map((item, idx) => (
+                    <div key={idx} className="color-legend-item">
+                      <span
+                        className="color-legend-dot"
+                        style={{
+                          background: item.color,
+                          boxShadow: item.glow ? `0 0 6px ${item.glow}` : undefined,
+                          border: item.border ? `1px solid ${item.border}` : undefined,
+                        }}
+                      />
+                      <span className="color-legend-name" style={{ color: item.color }}>
+                        {item.label}
+                      </span>
+                      <span className="color-legend-desc" title={item.desc}>
+                        {item.desc}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* ========== CENTER — MAP ========== */}
@@ -836,7 +1046,7 @@ function App() {
                     <button
                       key={m.id}
                       className={`btn map-btn ${isActive ? 'btn--active map-btn--active' : ''}`}
-                      onClick={() => sim.switchMap(m.id)}
+                      onClick={() => handleSelectMap(m.id)}
                       title={`${m.name} — ${m.subtitle}`}
                     >
                       <Globe size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
@@ -1151,10 +1361,10 @@ function App() {
             </div>
           </div>
 
-          {/* Activity Log with Clear Telemetry UI Fix */}
-          <div className="panel-section" style={{ flex: 1, minHeight: 140 }}>
+          {/* Mission Telemetry Log with Dedicated Console Container */}
+          <div className="panel-section telemetry-log-section" style={{ flex: 1, minHeight: 145 }}>
             <div className="panel-section__title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#38bdf8' }}>
                 <Radio size={13} /> Mission Telemetry Log ({state.events.length})
               </span>
               <button
@@ -1168,40 +1378,161 @@ function App() {
             </div>
             <div className="event-log">
               {state.events.length === 0 ? (
-                <div style={{ padding: 12, textAlign: 'center', color: 'var(--text-dim)', fontSize: 11 }}>
+                <div className="event-log__empty">
+                  <span className="event-log__empty-dot" />
                   Log cleared. Awaiting new telemetry events...
                 </div>
               ) : (
-                [...state.events].reverse().slice(0, 30).map(evt => (
-                  <div key={evt.id} className="event-entry">
-                    <span className="event-entry__time">{formatSimTime(evt.timestamp)}</span>
-                    <span className={`event-entry__badge event-entry__badge--${evt.category.toLowerCase()}`}>
-                      {evt.category}
-                    </span>
-                    <span className="event-entry__text">{evt.description}</span>
-                  </div>
-                ))
+                [...state.events].reverse().slice(0, 40).map(evt => {
+                  const cat = (evt.category || EventCategory.MISSION).toLowerCase();
+                  const desc = evt.description || (evt as any).message || 'Telemetry status update';
+                  return (
+                    <div key={evt.id} className="event-entry">
+                      <span className="event-entry__time">{formatSimTime(evt.timestamp)}</span>
+                      <span className={`event-entry__badge event-entry__badge--${cat}`}>
+                        {evt.category || 'INFO'}
+                      </span>
+                      <span className="event-entry__text">{desc}</span>
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* ========== BIG MISSION COMPLETE COMPREHENSIVE POPUP ========== */}
+      {/* ========== PLANETARY ENVIRONMENT BRIEFING POPUP ========== */}
+      {planetBriefingEnv && (
+        <div className="mission-complete-modal" onClick={() => setPlanetBriefingEnv(null)}>
+          <div className="planet-briefing-card" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
+                  {planetBriefingEnv.icon || '🪐'}
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <h2 style={{ fontSize: 18, fontWeight: 700, color: '#f8fafc', letterSpacing: 0.2, margin: 0 }}>
+                      {planetBriefingEnv.name} Expedition
+                    </h2>
+                    <span className="briefing-badge">
+                      {planetBriefingEnv.tagline}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3, margin: '3px 0 0' }}>
+                    {planetBriefingEnv.subtitle}
+                  </p>
+                </div>
+              </div>
+              <button
+                className="btn btn--icon"
+                onClick={() => setPlanetBriefingEnv(null)}
+                style={{ width: 28, height: 28, borderRadius: 8 }}
+                aria-label="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            {/* Environmental Overview Description */}
+            <div style={{ background: 'rgba(15, 23, 42, 0.55)', padding: '12px 14px', borderRadius: 10, border: '1px solid rgba(255, 255, 255, 0.06)' }}>
+              <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: '#38bdf8', fontWeight: 600, marginBottom: 4 }}>
+                Planetary Environment & Surface Profile
+              </div>
+              <p style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.55, margin: 0 }}>
+                {planetBriefingEnv.description}
+              </p>
+            </div>
+
+            {/* What the Planet Contains Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {/* Primary Scientific Objective */}
+              <div style={{ background: '#1c2537', padding: '12px 14px', borderRadius: 10, border: '1px solid rgba(255, 255, 255, 0.07)' }}>
+                <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--cyan-400)', fontWeight: 600, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <Target size={12} /> Prime Survey Target
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>
+                  {planetBriefingEnv.objective.name}
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.45, margin: '4px 0 0' }}>
+                  {planetBriefingEnv.objective.description}
+                </p>
+                <div style={{ marginTop: 8, fontSize: 11, color: '#38bdf8', fontFamily: 'var(--font-mono)' }}>
+                  Reward: +{planetBriefingEnv.objective.dataReward} Science Data Units
+                </div>
+              </div>
+
+              {/* Surface Resources & Geological Samples */}
+              <div style={{ background: '#1c2537', padding: '12px 14px', borderRadius: 10, border: '1px solid rgba(255, 255, 255, 0.07)' }}>
+                <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--green-400)', fontWeight: 600, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <Pickaxe size={12} /> Geological Deposits
+                </div>
+                <div style={{ fontSize: 11, color: '#cbd5e1', lineHeight: 1.5 }}>
+                  Contains <strong>{planetBriefingEnv.resourceCount}</strong> prospectable deposit sites across the sector:
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
+                  {(planetBriefingEnv.resourceTypes || []).filter((rt, idx, arr) => arr.indexOf(rt) === idx).map((rt, i) => {
+                    const cfg = RESOURCE_CONFIGS[rt];
+                    return (
+                      <span key={i} style={{ fontSize: 10, background: 'rgba(16, 185, 129, 0.12)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '2px 7px', borderRadius: 4 }}>
+                        {cfg?.symbol || '●'} {cfg?.label || rt}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Atmosphere, Power & Terramechanic Specs */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+              <div className="briefing-stat-box">
+                <span className="briefing-stat-box__label">Solar Flux Capacity</span>
+                <span className="briefing-stat-box__value">{planetBriefingEnv.solar.ratedSolarPower} W</span>
+                <span className="briefing-stat-box__sub">Dust loss: {((1 - planetBriefingEnv.solar.dustFactor) * 100).toFixed(0)}%</span>
+              </div>
+              <div className="briefing-stat-box">
+                <span className="briefing-stat-box__label">Battery Configuration</span>
+                <span className="briefing-stat-box__value">{planetBriefingEnv.batteryCapacity} Wh</span>
+                <span className="briefing-stat-box__sub">Reserve threshold: {planetBriefingEnv.safetyReserve} Wh</span>
+              </div>
+              <div className="briefing-stat-box">
+                <span className="briefing-stat-box__label">Survey Sector Grid</span>
+                <span className="briefing-stat-box__value">{planetBriefingEnv.mapWidth} × {planetBriefingEnv.mapHeight}</span>
+                <span className="briefing-stat-box__sub">Sensor scan: r = {planetBriefingEnv.sensorRadius}</span>
+              </div>
+            </div>
+
+            {/* Footer Buttons */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4, paddingTop: 12, borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+              <button className="btn" onClick={() => setPlanetBriefingEnv(null)}>
+                Dismiss
+              </button>
+              <button className="btn btn--success" onClick={() => setPlanetBriefingEnv(null)} style={{ fontWeight: 600 }}>
+                <Rocket size={13} /> Commence {planetBriefingEnv.name} Expedition
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========== MINIMALIST CLEAN AESTHETIC MISSION DEBRIEF POPUP ========== */}
       {showMissionSummaryModal && (
         <div className="mission-complete-modal" onClick={() => setShowMissionSummaryModal(false)}>
           <div className="mission-complete-card" onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            {/* Header: Clean architectural header without neon badges */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(16, 185, 129, 0.15)', border: '1.5px solid #10b981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Award size={26} color="#10b981" />
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: '#252b37', border: '1px solid rgba(255, 255, 255, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Award size={20} color="#cbd5e1" />
                 </div>
                 <div>
-                  <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.3px' }}>
-                    MISSION COMPLETE — ALL OBJECTIVES ACHIEVED
+                  <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#f8fafc', letterSpacing: '-0.2px' }}>
+                    MISSION DEBRIEF — EXPLORATION COMPLETE
                   </h2>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                    AEGIS-X Autonomous Planetary Surface Explorer · Exploration & Research Base Report
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                    AEGIS Autonomous Explorer · Operational & Scientific Summary
                   </div>
                 </div>
               </div>
@@ -1209,81 +1540,99 @@ function App() {
                 className="btn btn--icon"
                 onClick={() => setShowMissionSummaryModal(false)}
                 aria-label="Close Summary Modal"
-                style={{ width: 28, height: 28 }}
+                style={{ width: 28, height: 28, borderRadius: 8 }}
               >
-                <X size={16} />
+                <X size={15} />
               </button>
             </div>
 
             {/* Primary Key Performance Metrics Grid */}
             <div className="mission-summary-grid">
               <div className="mission-stat-box">
-                <span className="mission-stat-box__label">Resources Collected</span>
-                <span className="mission-stat-box__value" style={{ color: 'var(--accent)' }}>
+                <span className="mission-stat-box__label">Samples Collected</span>
+                <span className="mission-stat-box__value">
                   {state.collectedResources.length} samples
                 </span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                  {state.metrics.totalResourceValue} total value points
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>
+                  +{state.metrics.totalResourceValue} yield pts · {(state.richSampleSources ?? []).filter(r => r.sampled).length} rich deposits
                 </span>
               </div>
               <div className="mission-stat-box">
-                <span className="mission-stat-box__label">Biosignatures Scanned</span>
-                <span className="mission-stat-box__value" style={{ color: 'var(--emerald)' }}>
+                <span className="mission-stat-box__label">Biosignatures Surveyed</span>
+                <span className="mission-stat-box__value">
                   {state.objectives.filter(o => o.scanned).length} / {state.objectives.length} targets
                 </span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>100% survey complete</span>
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>100% survey complete</span>
               </div>
               <div className="mission-stat-box">
-                <span className="mission-stat-box__label">Data Transported</span>
-                <span className="mission-stat-box__value" style={{ color: '#38bdf8' }}>
-                  {state.deliveredData.toFixed(0)} units
+                <span className="mission-stat-box__label">Path Safety Score</span>
+                <span className="mission-stat-box__value">
+                  {state.pathSafetyScore ?? 100}%
                 </span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>CCSDS DTN Protocol</span>
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>
+                  {(state.pathSafetyScore ?? 100) >= 80 ? 'Low risk route' : 'Elevated terrain risk'}
+                </span>
+              </div>
+              <div className="mission-stat-box">
+                <span className="mission-stat-box__label">Wheel Slip Probability</span>
+                <span className="mission-stat-box__value">
+                  {((state.wheelSlipProbability || 0.03) * 100).toFixed(1)}%
+                </span>
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>Terramechanic evaluation</span>
               </div>
               <div className="mission-stat-box">
                 <span className="mission-stat-box__label">Area Explored</span>
-                <span className="mission-stat-box__value" style={{ color: 'var(--solar)' }}>
-                  {state.metrics.mapExploredPercent.toFixed(1)}%
+                <span className="mission-stat-box__value">
+                  {((state.metrics.discoveredCells / Math.max(1, state.metrics.totalCells)) * 100).toFixed(1)}%
                 </span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{state.metrics.discoveredCells} / {state.metrics.totalCells} sectors</span>
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>{state.metrics.discoveredCells} / {state.metrics.totalCells} sectors</span>
+              </div>
+              <div className="mission-stat-box">
+                <span className="mission-stat-box__label">Data Transported</span>
+                <span className="mission-stat-box__value">
+                  {state.deliveredData.toFixed(0)} units
+                </span>
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>CCSDS DTN protocol</span>
               </div>
               <div className="mission-stat-box">
                 <span className="mission-stat-box__label">Distance Traversed</span>
-                <span className="mission-stat-box__value" style={{ color: '#c084fc' }}>
+                <span className="mission-stat-box__value">
                   {state.metrics.distanceTraveled} cells
                 </span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Path efficiency optimized</span>
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>Energy-optimized path</span>
               </div>
               <div className="mission-stat-box">
-                <span className="mission-stat-box__label">Solar Power Harvested</span>
-                <span className="mission-stat-box__value" style={{ color: '#fbbf24' }}>
+                <span className="mission-stat-box__label">Solar Harvested</span>
+                <span className="mission-stat-box__value">
                   {formatEnergy(state.battery.totalHarvested)}
                 </span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Zero loopback errors</span>
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>Battery reserve maintained</span>
               </div>
             </div>
 
             {/* Detailed Breakdown: Resources & Biosigns */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               {/* Left Column: Resources */}
-              <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: 12, padding: 14 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Pickaxe size={13} color="var(--accent)" /> Collected Geological Samples ({state.collectedResources.length})
+              <div style={{ background: '#252b37', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: 12, padding: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#f8fafc', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Geological Samples ({state.collectedResources.length})</span>
+                  <span style={{ fontSize: 10, color: '#94a3b8' }}>+{state.metrics.totalResourceValue} pts</span>
                 </div>
                 {state.collectedResources.length === 0 ? (
-                  <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>No samples collected yet.</div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>No samples collected yet.</div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 150, overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 130, overflowY: 'auto' }}>
                     {state.collectedResources.map((res, i) => {
                       const cfg = RESOURCE_CONFIGS[res.type];
                       return (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.3)', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, color: cfg.color }}>
-                            <span>{cfg.symbol}</span>
-                            <span>{cfg.label}</span>
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '5px 8px', borderRadius: 6, border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#e2e8f0' }}>
+                            <span>{cfg?.symbol || '●'}</span>
+                            <span>{cfg?.label || res.type}</span>
+                            {res.isRichSource && <span style={{ fontSize: 9, color: '#38bdf8' }}>[Rich]</span>}
                           </span>
-                          <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
-                            Value: {res.value} · Energy: {res.collectionEnergy} Wh
+                          <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#94a3b8' }}>
+                            +{res.value} pts · {res.collectionEnergy} Wh
                           </span>
                         </div>
                       );
@@ -1292,20 +1641,32 @@ function App() {
                 )}
               </div>
 
-              {/* Right Column: Biosignatures Scanned */}
-              <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: 12, padding: 14 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Target size={13} color="var(--emerald)" /> Scientific Biosignatures & Objectives
+              {/* Right Column: Biosignatures & MVL Exploration */}
+              <div style={{ background: '#252b37', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: 12, padding: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#f8fafc', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Survey Targets & Prime MVL</span>
+                  <span style={{ fontSize: 10, color: '#94a3b8' }}>
+                    {state.mostValuableLocation?.visited ? 'MVL Explored' : 'Nominal Survey'}
+                  </span>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 150, overflowY: 'auto' }}>
-                  {state.objectives.map((obj, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.3)', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: obj.scanned ? 'var(--emerald)' : 'var(--text-dim)' }}>
-                        <CheckCircle2 size={12} color={obj.scanned ? '#10b981' : '#64748b'} />
-                        <span style={{ fontWeight: 600 }}>{obj.name}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 130, overflowY: 'auto' }}>
+                  {state.mostValuableLocation && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '5px 8px', borderRadius: 6, border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                      <span style={{ fontSize: 11, color: state.mostValuableLocation.visited ? '#f8fafc' : '#94a3b8' }}>
+                        ⭐ {state.mostValuableLocation.name}
                       </span>
-                      <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
-                        ({obj.position.x}, {obj.position.y}) · {obj.scanned ? 'CONFIRMED' : 'PENDING'}
+                      <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#94a3b8' }}>
+                        {state.mostValuableLocation.visited ? `VISITED (+${state.mostValuableLocation.scientificYield} pts)` : state.mostValuableLocation.confirmed ? 'OPTIONAL (SAFE SKIP)' : 'DECLINED'}
+                      </span>
+                    </div>
+                  )}
+                  {state.objectives.map((obj, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '5px 8px', borderRadius: 6, border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                      <span style={{ fontSize: 11, color: obj.scanned ? '#f8fafc' : '#64748b' }}>
+                        {obj.name}
+                      </span>
+                      <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#94a3b8' }}>
+                        ({obj.position.x}, {obj.position.y}) · {obj.scanned ? 'VERIFIED' : 'PENDING'}
                       </span>
                     </div>
                   ))}
@@ -1313,39 +1674,39 @@ function App() {
               </div>
             </div>
 
-            {/* Network & Adaptability Audit */}
-            <div style={{ background: 'rgba(56, 189, 248, 0.05)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: 12, padding: 12 }}>
+            {/* Network & Adaptability Audit Card */}
+            <div style={{ background: '#252b37', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: 10, padding: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Shield size={13} /> CCSDS DTN (RFC 9171) Secure Channel Audit
+                <span style={{ fontSize: 11, fontWeight: 600, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Shield size={13} color="#94a3b8" /> CCSDS DTN (RFC 9171) Secure Telemetry Audit
                 </span>
-                <span className="network-badge-cipher">AES-GCM-256 + HMAC-SHA256</span>
+                <span className="network-badge-cipher">AES-GCM-256</span>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, fontSize: 11 }}>
                 <div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: 10 }}>CHANNEL PROTOCOL</div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>CCSDS DTN Bundle</div>
+                  <div style={{ color: '#94a3b8', fontSize: 10 }}>CHANNEL</div>
+                  <div style={{ fontWeight: 500, color: '#f8fafc' }}>CCSDS DTN Bundle</div>
                 </div>
                 <div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: 10 }}>LINK TELEMETRY</div>
-                  <div style={{ fontWeight: 600, color: '#10b981' }}>{state.secureNetwork?.snrDb ? state.secureNetwork.snrDb.toFixed(1) : '28.4'} dB · {state.secureNetwork?.latencyMs ? state.secureNetwork.latencyMs.toFixed(0) : '42'} ms</div>
+                  <div style={{ color: '#94a3b8', fontSize: 10 }}>LINK TELEMETRY</div>
+                  <div style={{ fontWeight: 500, color: '#f8fafc' }}>{state.secureNetwork?.snrDb ? state.secureNetwork.snrDb.toFixed(1) : '28.4'} dB · {state.secureNetwork?.latencyMs ? state.secureNetwork.latencyMs.toFixed(0) : '42'} ms</div>
                 </div>
                 <div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: 10 }}>DELIVERED BUNDLES</div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{state.secureNetwork?.deliveredBundles ?? 0} pkts verified</div>
+                  <div style={{ color: '#94a3b8', fontSize: 10 }}>VERIFIED PACKETS</div>
+                  <div style={{ fontWeight: 500, color: '#f8fafc' }}>{state.secureNetwork?.deliveredBundles ?? 0} pkts</div>
                 </div>
                 <div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: 10 }}>DYNAMIC DETOURS</div>
-                  <div style={{ fontWeight: 600, color: '#fbbf24' }}>{state.dynamicHazards?.length ?? 0} path blockages adapted</div>
+                  <div style={{ color: '#94a3b8', fontSize: 10 }}>DYNAMIC DETOURS</div>
+                  <div style={{ fontWeight: 500, color: '#f8fafc' }}>{state.dynamicHazards?.length ?? 0} adapted</div>
                 </div>
               </div>
             </div>
 
             {/* Database Persistence Status & Action Buttons */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, paddingTop: 12, borderTop: '1px solid var(--border-subtle)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#10b981' }}>
-                <CheckCircle2 size={13} color="#10b981" />
-                <span>Mission Dynamically Appended: <code>src/database/missions.json</code> (Live & viewable in VS Code)</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2, paddingTop: 10, borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#94a3b8' }}>
+                <CheckCircle2 size={13} color="#94a3b8" />
+                <span>Mission persisted: <code>src/database/missions.json</code></span>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
@@ -1356,13 +1717,80 @@ function App() {
                   Close & Inspect Map
                 </button>
                 <button
-                  className="btn btn--success btn--sm"
-                  style={{ height: 32, padding: '0 14px', background: '#10b981', color: '#030712', fontWeight: 700 }}
+                  className="btn btn--sm"
+                  style={{ height: 32, padding: '0 14px', background: '#2e3544', border: '1px solid rgba(255, 255, 255, 0.18)', color: '#f8fafc', fontWeight: 600 }}
                   onClick={() => { setShowMissionSummaryModal(false); sim.resetMission(); }}
                 >
                   <RotateCcw size={13} /> Restart Mission
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========== MOST VALUABLE LOCATION (MVL) SELECTION PROMPT MODAL ========== */}
+      {showMvlPrompt && state.mostValuableLocation && (
+        <div className="mvl-prompt-modal" onClick={() => setShowMvlPrompt(false)}>
+          <div className="mvl-prompt-card" onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                  Scientific Anomaly Assessment
+                </div>
+                <h3 style={{ margin: '4px 0 0', fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>
+                  Designate Most Valuable Location?
+                </h3>
+              </div>
+              <button
+                className="btn btn--icon"
+                onClick={() => setShowMvlPrompt(false)}
+                aria-label="Dismiss"
+                style={{ width: 26, height: 26 }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div style={{ background: '#252b37', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: 12, padding: 12, fontSize: 12, lineHeight: 1.5 }}>
+              <div>
+                Orbital reconnaissance detected a high-priority scientific formation:
+                <div style={{ fontWeight: 600, color: '#f8fafc', marginTop: 2 }}>
+                  {state.mostValuableLocation.name}
+                </div>
+              </div>
+              <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 4 }}>
+                Sector coordinates: <span style={{ fontFamily: 'var(--font-mono)', color: '#f8fafc' }}>({state.mostValuableLocation.x}, {state.mostValuableLocation.y})</span> · Potential yield: <span style={{ fontFamily: 'var(--font-mono)', color: '#f8fafc' }}>+{state.mostValuableLocation.scientificYield} Science Units</span>
+              </div>
+              <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8', borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: 6 }}>
+                Do you wish to designate this site as the mission's Most Valuable Location?
+                <div style={{ marginTop: 2, fontStyle: 'italic', color: '#64748b' }}>
+                  Note: Exploration is not mandatory; if confirmed, the rover will prioritize surveying this location when operational margins and return safety allow.
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+              <button
+                className="btn btn--sm"
+                style={{ height: 32, padding: '0 14px' }}
+                onClick={() => {
+                  sim.confirmMostValuableLocation(false);
+                  setShowMvlPrompt(false);
+                }}
+              >
+                Skip Designation
+              </button>
+              <button
+                className="btn btn--sm"
+                style={{ height: 32, padding: '0 14px', background: '#2e3544', border: '1px solid rgba(255, 255, 255, 0.18)', color: '#f8fafc', fontWeight: 600 }}
+                onClick={() => {
+                  sim.confirmMostValuableLocation(true);
+                  setShowMvlPrompt(false);
+                }}
+              >
+                Confirm as Most Valuable Location
+              </button>
             </div>
           </div>
         </div>
@@ -1416,10 +1844,16 @@ function CellTooltip({ state, x, y, screenX, screenY }: {
               <span>Solar Station</span>
             </div>
           )}
+          {state.mostValuableLocation && state.mostValuableLocation.x === x && state.mostValuableLocation.y === y && (
+            <div className="cell-tooltip__row" style={{ color: '#f59e0b' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Target size={11} color="#f59e0b" /> Prime MVL</span>
+              <span>+{state.mostValuableLocation.scientificYield} Science</span>
+            </div>
+          )}
           {beliefCell.hasResource && beliefCell.resource && (
             <div className="cell-tooltip__row">
-              <span>{RESOURCE_CONFIGS[beliefCell.resource.type].symbol} Resource</span>
-              <span>{RESOURCE_CONFIGS[beliefCell.resource.type].label}</span>
+              <span>{RESOURCE_CONFIGS[beliefCell.resource.type].symbol} {beliefCell.resource.isRichSource ? '💎 Rich Source' : 'Resource'}</span>
+              <span>{RESOURCE_CONFIGS[beliefCell.resource.type].label} {beliefCell.resource.isRichSource ? `(${beliefCell.resource.yieldMultiplier || 2.5}x)` : ''}</span>
             </div>
           )}
           {beliefCell.hasObjective && beliefCell.objective && (
@@ -1428,6 +1862,10 @@ function CellTooltip({ state, x, y, screenX, screenY }: {
               <span>{beliefCell.objective.name}</span>
             </div>
           )}
+          <div className="cell-tooltip__row">
+            <span>Wheel Slip Risk</span>
+            <span>{((state.wheelSlipProbability || 0.03) * 100).toFixed(0)}%</span>
+          </div>
         </>
       )}
     </div>

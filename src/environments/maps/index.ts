@@ -5,6 +5,8 @@
 import { EnvironmentProperties, GeneratedEnvironment } from '../types';
 import { generateEnvironment } from '../generator';
 
+export type { EnvironmentProperties };
+
 // Export individual environment modules
 export * from './mars';
 export * from './lunar';

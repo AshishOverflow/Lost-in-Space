@@ -266,7 +266,7 @@ export class RoverMissionDatabase {
       environment: state.environmentName || 'Mars Surface',
       status: 'MISSION_SUCCESSFUL',
       distanceTraversed: state.metrics?.distanceTraveled ?? 0,
-      areaExploredPercent: +(((state.metrics?.mapExploredPercent ?? 0) > 1 ? state.metrics.mapExploredPercent : (state.metrics?.mapExploredPercent ?? 0) * 100)).toFixed(1),
+      areaExploredPercent: +(((state.metrics?.discoveredCells ?? 0) / Math.max(1, state.metrics?.totalCells ?? (state.mapWidth * state.mapHeight))) * 100).toFixed(1),
       cellsExplored: state.metrics?.discoveredCells ?? 0,
       totalCells: state.metrics?.totalCells ?? (state.mapWidth * state.mapHeight),
       resourcesCollectedCount: state.collectedResources?.length ?? 0,
